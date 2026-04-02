@@ -8,8 +8,12 @@ todo - Task manager for the terminal
 Usage: todo <command> [options]
 
 Commands:
-  help      Show this help message
-  version   Show version
+  add <title>        Add a new task
+  ls                 List all tasks
+  edit <id> <title>  Edit task title
+  rm <id>            Remove a task
+  help               Show this help message
+  version            Show version
 
 Run 'todo help <command>' for command-specific help.
 HELP
