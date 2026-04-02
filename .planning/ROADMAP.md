@@ -61,7 +61,7 @@ Plans:
 **Plans:** 2 plans
 Plans:
 - [x] 03-01-PLAN.md -- ID resolution helper, td-add, td-ls commands, integration tests
-- [ ] 03-02-PLAN.md -- td-edit, td-rm commands, expanded tests, help text update
+- [x] 03-02-PLAN.md -- td-edit, td-rm commands, expanded tests, help text update
 
 ### Phase 4: Task Workflow
 **Goal**: Users can move tasks through statuses and assign priorities
