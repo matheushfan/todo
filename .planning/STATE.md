@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-04-02T22:48:12.800Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-04-02T23:01:19.003Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 8
-  completed_phases: 4
-  total_plans: 5
-  completed_plans: 5
+  completed_phases: 5
+  total_plans: 6
+  completed_plans: 6
   percent: 0
 ---
 
@@ -21,11 +21,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-02)
 
 **Core value:** Gerenciar tasks direto no terminal de forma rapida e visual, sem sair do fluxo de trabalho.
-**Current focus:** Phase 04 — task-workflow
+**Current focus:** Phase 05 — multi-list-management
 
 ## Current Position
 
-Phase: 04 (task-workflow) — EXECUTING
+Phase: 05 (multi-list-management) — EXECUTING
 Plan: 1 of 1
 Status: Phase complete — ready for verification
 Last activity: 2026-04-02
@@ -57,6 +57,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P01 | 2min | 3 tasks | 4 files |
 | Phase 03 P02 | 2min | 2 tasks | 4 files |
 | Phase 04 P01 | 2min | 2 tasks | 8 files |
+| Phase 05 P01 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,8 @@ Recent decisions affecting current work:
 - [Phase 04]: Pre-validate status against statuses array in zsh via inline JXA, not inside _td_storage_modify
 - [Phase 04]: zparseopts -D -E for optional flag parsing in td-add
 - [Phase 04]: td-done uses data.statuses[last] for dynamic done status (not hardcoded)
+- [Phase 05]: Subcommand dispatch pattern (create/switch/ls) in single td-list file
+- [Phase 05]: _td_storage_active_list reads config.json via JXA with default fallback
 
 ### Pending Todos
 
@@ -90,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-02T22:48:12.798Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-04-02T23:01:19.001Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None

@@ -24,9 +24,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Multi-List
 
-- [ ] **LIST-01**: User can create multiple named lists
-- [ ] **LIST-02**: User can switch between lists with a single command
-- [ ] **LIST-03**: System uses a default list when none is specified
+- [x] **LIST-01**: User can create multiple named lists
+- [x] **LIST-02**: User can switch between lists with a single command
+- [x] **LIST-03**: System uses a default list when none is specified
 - [ ] **LIST-04**: User can define custom statuses per list (columns do kanban)
 
 ### Visualization
@@ -91,9 +91,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TASK-07 | Phase 8 | Pending |
 | PRIO-01 | Phase 4 | Complete |
 | PRIO-02 | Phase 7 | Pending |
-| LIST-01 | Phase 5 | Pending |
-| LIST-02 | Phase 5 | Pending |
-| LIST-03 | Phase 5 | Pending |
+| LIST-01 | Phase 5 | Complete |
+| LIST-02 | Phase 5 | Complete |
+| LIST-03 | Phase 5 | Complete |
 | LIST-04 | Phase 6 | Pending |
 | VIEW-01 | Phase 7 | Pending |
 | VIEW-02 | Phase 8 | Pending |

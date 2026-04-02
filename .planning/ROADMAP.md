@@ -84,7 +84,9 @@ Plans:
   2. User can switch active list with a single command
   3. When no list is specified, a default list is used automatically
   4. Each list stores its tasks independently (no cross-contamination)
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [x] 05-01-PLAN.md -- Storage active-list resolution, td-list command (create/switch/ls), tests
 
 ### Phase 6: Custom Statuses & Tags
 **Goal**: Users can define per-list workflows and categorize tasks with tags
@@ -129,7 +131,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 2. Storage Engine | 0/1 | Planning | - |
 | 3. Core Task CRUD | 0/2 | Not started | - |
 | 4. Task Workflow | 0/1 | Not started | - |
-| 5. Multi-List Management | 0/TBD | Not started | - |
+| 5. Multi-List Management | 0/1 | Not started | - |
 | 6. Custom Statuses & Tags | 0/TBD | Not started | - |
 | 7. Colored Output & List View | 0/TBD | Not started | - |
 | 8. Kanban View & Bulk Operations | 0/TBD | Not started | - |
