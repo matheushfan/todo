@@ -1,0 +1,9 @@
+# td-board - show kanban board view
+# Autoloaded: file body = function body
+
+_td_storage_init
+
+local tasks_file
+tasks_file="$(_td_storage_list_path)"
+
+_td_board_render "$tasks_file"

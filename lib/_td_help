@@ -8,6 +8,8 @@ todo - Task manager for the terminal
 Usage: todo <command> [options]
 
 Commands:
+  board                      Show kanban board view (default)
+  bulk done|move|rm <ids>    Bulk operations on multiple tasks
   add [-p prio] [-t tag] <title>  Add a new task
   ls [-s status] [-p prio]   List tasks (with optional filters)
   edit <id> <title>          Edit task title

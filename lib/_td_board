@@ -75,8 +75,11 @@ _td_board_render() {
   # Split on __COL_SEP__
   blocks=("${(@s:__COL_SEP__:)grouped_output}")
 
+  local raw_block row_idx line
+  local -a lines
+
   for (( c=1; c<=num_cols; c++ )); do
-    local raw_block="${blocks[$c]}"
+    raw_block="${blocks[$c]}"
     # Trim leading/trailing newlines
     raw_block="${raw_block#$'\n'}"
     raw_block="${raw_block%$'\n'}"
@@ -84,11 +87,11 @@ _td_board_render() {
     if [[ -z "$raw_block" ]]; then
       col_counts[$c]=0
     else
-      local -a lines=("${(@f)raw_block}")
+      lines=("${(@f)raw_block}")
       col_counts[$c]=${#lines[@]}
       (( ${#lines[@]} > max_rows )) && max_rows=${#lines[@]}
 
-      local row_idx=1
+      row_idx=1
       for line in "${lines[@]}"; do
         task_cells[$c,$row_idx]="$line"
         row_idx=$((row_idx + 1))
@@ -97,14 +100,16 @@ _td_board_render() {
   done
 
   # --- Render header row ---
+  local header header_colored visible_hdr_len pad_left pad_right
+
   printf "|"
   for (( c=1; c<=num_cols; c++ )); do
-    local header="${statuses[$c]:u}"  # uppercase
-    local header_colored="${TD_COLORS[bold]}${TD_COLORS[cyan]}${header}${TD_COLORS[reset]}"
+    header="${statuses[$c]:u}"  # uppercase
+    header_colored="${TD_COLORS[bold]}${TD_COLORS[cyan]}${header}${TD_COLORS[reset]}"
     # Center the header in col_width
-    local visible_hdr_len=${#header}
-    local pad_left=$(( (col_width - visible_hdr_len) / 2 ))
-    local pad_right=$(( col_width - visible_hdr_len - pad_left ))
+    visible_hdr_len=${#header}
+    pad_left=$(( (col_width - visible_hdr_len) / 2 ))
+    pad_right=$(( col_width - visible_hdr_len - pad_left ))
     printf "%*s%s%*s|" "$pad_left" "" "$header_colored" "$pad_right" ""
   done
   printf "\n"
@@ -129,24 +134,24 @@ _td_board_render() {
     return 0
   fi
 
+  local cell_raw cell_id cell_pri cell_tags cell_text rest formatted
+
   for (( row=1; row<=max_rows; row++ )); do
     printf "|"
     for (( c=1; c<=num_cols; c++ )); do
-      local cell_raw="${task_cells[$c,$row]}"
+      cell_raw="${task_cells[$c,$row]}"
       if [[ -z "$cell_raw" ]]; then
         # Empty cell -- pad with spaces
         printf "%-${col_width}s|" ""
       else
         # Parse: id\tpriority\ttags\ttext
-        local cell_id cell_pri cell_tags cell_text
         cell_id="${cell_raw%%	*}"
-        local rest="${cell_raw#*	}"
+        rest="${cell_raw#*	}"
         cell_pri="${rest%%	*}"
         rest="${rest#*	}"
         cell_tags="${rest%%	*}"
         cell_text="${rest#*	}"
 
-        local formatted
         formatted="$(_td_board_format_card "$cell_id" "$cell_pri" "$cell_tags" "$cell_text" "$col_width")"
         _td_printf_colored "$formatted" "$col_width"
         printf "|"

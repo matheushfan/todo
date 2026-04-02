@@ -24,8 +24,11 @@ main() {
   # Load color rendering library
   autoload -Uz _td_color && _td_color
 
+  # Load kanban board rendering engine
+  autoload -Uz _td_board && _td_board
+
   # Dispatch
-  local cmd="${1:-help}"
+  local cmd="${1:-board}"
   shift 2>/dev/null
 
   local func="td-${cmd}"

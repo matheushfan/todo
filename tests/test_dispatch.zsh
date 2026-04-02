@@ -2,9 +2,9 @@
 source "${0:A:h}/test_helpers.zsh"
 printf "=== Dispatch Tests ===\n"
 
-# Test 1: Default command (no args) shows help
-output=$(zsh "$TD_BIN" 2>&1)
-assert_contains "no args shows help" "Usage:" "$output"
+# Test 1: Default command (no args) shows board
+output=$(TODOLIST_DATA=$(mktemp -d) zsh "$TD_BIN" 2>&1)
+assert_contains "no args shows board" "TODO" "$output"
 
 # Test 2: Explicit help command
 output=$(zsh "$TD_BIN" help 2>&1)
