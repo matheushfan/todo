@@ -1,0 +1,160 @@
+# _td_storage - JSON storage engine via JXA with atomic writes
+# This file body becomes the function body via autoload
+
+# Ensure storage directory and default list exist
+_td_storage_init() {
+  local data_dir="$TD_DATA"
+  local default_dir="$data_dir/lists/default"
+
+  [[ -d "$default_dir" ]] && return 0
+
+  mkdir -p "$default_dir" || {
+    _td_error "Failed to create data directory: $default_dir"
+    return 1
+  }
+
+  # Create default tasks file
+  printf '{"name":"default","statuses":["todo","doing","done"],"tasks":[]}\n' \
+    > "$default_dir/tasks.json" || return 1
+
+  # Create global config
+  printf '{"active_list":"default","version":1}\n' \
+    > "$data_dir/config.json" || return 1
+}
+
+# Atomic write: temp file + mv (same filesystem guarantees atomicity)
+_td_storage_atomic_write() {
+  local target="$1"
+  local content="$2"
+  local tmpfile="${target}.tmp.$$"
+
+  printf '%s\n' "$content" > "$tmpfile" \
+    && mv "$tmpfile" "$target" \
+    || { rm -f "$tmpfile"; return 1; }
+}
+
+# Read JSON file, optionally extract with JS query
+# Usage: _td_storage_read <file> [js_query]
+# Returns: JSON string to stdout
+_td_storage_read() {
+  local file="$1"
+  local query="${2:-}"
+
+  [[ -f "$file" ]] || { _td_error "File not found: $file"; return 1; }
+
+  local json_data
+  json_data="$(cat "$file")" || return 1
+
+  local js_expr="JSON.stringify(data${query})"
+
+  local output
+  output=$(JSON_DATA="$json_data" osascript -l JavaScript -e '
+    function run() {
+      var data = JSON.parse(
+        $.NSProcessInfo.processInfo.environment.objectForKey("JSON_DATA").js
+      );
+      return '"${js_expr}"';
+    }
+  ' 2>/dev/null) || { _td_error "JSON read failed"; return 1; }
+
+  if [[ -z "$output" ]]; then
+    _td_error "JSON read returned empty"
+    return 1
+  fi
+
+  printf '%s\n' "$output"
+}
+
+# Modify JSON file with a JS transformation (read + transform + atomic write)
+# Usage: _td_storage_modify <file> <js_transform>
+# js_transform operates on `data` variable
+_td_storage_modify() {
+  local file="$1"
+  local js_transform="$2"
+  local tmpfile="${file}.tmp.$$"
+
+  [[ -f "$file" ]] || { _td_error "File not found: $file"; return 1; }
+
+  local json_data
+  json_data="$(cat "$file")" || return 1
+
+  JSON_DATA="$json_data" osascript -l JavaScript -e '
+    function run() {
+      var data = JSON.parse(
+        $.NSProcessInfo.processInfo.environment.objectForKey("JSON_DATA").js
+      );
+      '"${js_transform}"'
+      return JSON.stringify(data, null, 2);
+    }
+  ' > "$tmpfile" 2>/dev/null
+
+  if [[ ! -s "$tmpfile" ]]; then
+    rm -f "$tmpfile"
+    _td_error "JSON modify failed"
+    return 1
+  fi
+
+  mv "$tmpfile" "$file" || { rm -f "$tmpfile"; return 1; }
+}
+
+# Add a task to a tasks.json file
+# All user input passed via env vars (safe from injection)
+# Usage: _td_storage_add_task <file> <text> [status] [priority]
+# Returns: task UUID to stdout
+_td_storage_add_task() {
+  local file="$1"
+  local text="$2"
+  local task_status="${3:-todo}"
+  local task_priority="${4:-medium}"
+  local task_id
+  task_id="$(uuidgen)" || return 1
+  local tmpfile="${file}.tmp.$$"
+
+  JSON_DATA="$(cat "$file")" \
+  TASK_ID="$task_id" \
+  TASK_TEXT="$text" \
+  TASK_STATUS="$task_status" \
+  TASK_PRIORITY="$task_priority" \
+  osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+      var task = {
+        id: env.objectForKey("TASK_ID").js,
+        text: env.objectForKey("TASK_TEXT").js,
+        status: env.objectForKey("TASK_STATUS").js,
+        priority: env.objectForKey("TASK_PRIORITY").js,
+        tags: [],
+        created: new Date().toISOString(),
+        updated: new Date().toISOString()
+      };
+      data.tasks.push(task);
+      return JSON.stringify(data, null, 2);
+    }
+  ' > "$tmpfile" 2>/dev/null
+
+  if [[ ! -s "$tmpfile" ]]; then
+    rm -f "$tmpfile"
+    _td_error "Failed to add task"
+    return 1
+  fi
+
+  mv "$tmpfile" "$file" || { rm -f "$tmpfile"; return 1; }
+  printf '%s\n' "$task_id"
+}
+
+# Generate unique task ID
+_td_storage_new_id() {
+  uuidgen
+}
+
+# Get path to tasks file for a list
+_td_storage_list_path() {
+  local list="${1:-default}"
+  printf '%s/lists/%s/tasks.json' "$TD_DATA" "$list"
+}
+
+# Get path to global config
+_td_storage_config_path() {
+  printf '%s/config.json' "$TD_DATA"
+}
