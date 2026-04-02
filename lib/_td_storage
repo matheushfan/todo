@@ -127,12 +127,14 @@ _td_storage_add_task() {
     function run() {
       var env = $.NSProcessInfo.processInfo.environment;
       var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+      var tagsEnv = env.objectForKey("TASK_TAGS");
+      var tagsStr = tagsEnv ? tagsEnv.js : "";
       var task = {
         id: env.objectForKey("TASK_ID").js,
         text: env.objectForKey("TASK_TEXT").js,
         status: env.objectForKey("TASK_STATUS").js,
         priority: env.objectForKey("TASK_PRIORITY").js,
-        tags: [],
+        tags: tagsStr ? tagsStr.split(",") : [],
         created: new Date().toISOString(),
         updated: new Date().toISOString()
       };

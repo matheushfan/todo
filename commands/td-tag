@@ -1,0 +1,85 @@
+# td-tag - add/remove tags on tasks
+# Autoloaded: file body = function body
+
+_td_storage_init
+
+local tasks_file
+tasks_file="$(_td_storage_list_path)"
+
+_tag_add() {
+  local id_prefix="$1"
+  local tag="$2"
+
+  [[ -z "$id_prefix" || -z "$tag" ]] && {
+    _td_error "Usage: todo tag add <task-id> <tag>"
+    return 1
+  }
+
+  if [[ ! "$tag" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    _td_error "Invalid tag '$tag'. Use letters, numbers, hyphens, underscores only."
+    return 1
+  fi
+
+  local task_id
+  task_id="$(_td_resolve_task_id "$tasks_file" "$id_prefix")" || return 1
+
+  export TASK_ID="$task_id"
+  export TAG_NAME="$tag"
+  _td_storage_modify "$tasks_file" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var tid = env.objectForKey("TASK_ID").js;
+    var tag = env.objectForKey("TAG_NAME").js;
+    var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
+    if (idx === -1) throw new Error("not found");
+    if (!data.tasks[idx].tags) data.tasks[idx].tags = [];
+    if (data.tasks[idx].tags.indexOf(tag) === -1) {
+      data.tasks[idx].tags.push(tag);
+    }
+    data.tasks[idx].updated = new Date().toISOString();
+  '
+  local rc=$?
+  unset TASK_ID TAG_NAME
+
+  (( rc == 0 )) && _td_success "Tagged ${task_id:0:8} with '\''$tag'\''"
+  return $rc
+}
+
+_tag_rm() {
+  local id_prefix="$1"
+  local tag="$2"
+
+  [[ -z "$id_prefix" || -z "$tag" ]] && {
+    _td_error "Usage: todo tag rm <task-id> <tag>"
+    return 1
+  }
+
+  local task_id
+  task_id="$(_td_resolve_task_id "$tasks_file" "$id_prefix")" || return 1
+
+  export TASK_ID="$task_id"
+  export TAG_NAME="$tag"
+  _td_storage_modify "$tasks_file" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var tid = env.objectForKey("TASK_ID").js;
+    var tag = env.objectForKey("TAG_NAME").js;
+    var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
+    if (idx === -1) throw new Error("not found");
+    if (!data.tasks[idx].tags) data.tasks[idx].tags = [];
+    data.tasks[idx].tags = data.tasks[idx].tags.filter(function(t) { return t !== tag; });
+    data.tasks[idx].updated = new Date().toISOString();
+  '
+  local rc=$?
+  unset TASK_ID TAG_NAME
+
+  (( rc == 0 )) && _td_success "Removed tag '$tag' from ${task_id:0:8}"
+  return $rc
+}
+
+local subcmd="${1:-}"
+shift 2>/dev/null
+
+case "$subcmd" in
+  add)      _tag_add "$@" ;;
+  rm)       _tag_rm "$@" ;;
+  *)        _td_error "Usage: todo tag <add|rm> <task-id> <tag>"; return 1 ;;
+esac

@@ -1,13 +1,13 @@
 # td-add - create a new task
 # Autoloaded: file body = function body
 
-local -a priority_opt
-zparseopts -D -E - p:=priority_opt -priority:=priority_opt
+local -a priority_opt tags_opt
+zparseopts -D -E - p:=priority_opt -priority:=priority_opt t+:=tags_opt -tags+:=tags_opt
 
 local text="$*"
 
 [[ -z "$text" ]] && {
-  _td_error "Usage: todo add [-p alta|media|baixa] <title>"
+  _td_error "Usage: todo add [-p alta|media|baixa] [-t tag ...] <title>"
   return 1
 }
 
@@ -23,12 +23,29 @@ if (( ${#priority_opt} > 0 )); then
   esac
 fi
 
+local -a tags=()
+local i
+for (( i=1; i<=${#tags_opt}; i+=2 )); do
+  local t="${tags_opt[$((i+1))]}"
+  if [[ ! "$t" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    _td_error "Invalid tag '$t'. Use letters, numbers, hyphens, underscores only."
+    return 1
+  fi
+  tags+=("$t")
+done
+
 _td_storage_init
 
 local tasks_file
 tasks_file="$(_td_storage_list_path)"
 
+export TASK_TAGS="${(j:,:)tags}"
+
 local task_id
-task_id="$(_td_storage_add_task "$tasks_file" "$text" "todo" "$task_priority")" || return 1
+task_id="$(_td_storage_add_task "$tasks_file" "$text" "todo" "$task_priority")" || {
+  unset TASK_TAGS
+  return 1
+}
+unset TASK_TAGS
 
 _td_success "Created task ${task_id:0:8}"
