@@ -38,7 +38,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Tags
 
 - [x] **TAG-01**: User can add one or more tags to a task
-- [ ] **TAG-02**: User can filter tasks by status and priority
+- [x] **TAG-02**: User can filter tasks by status and priority
 
 ### Storage & Infrastructure
 
@@ -99,7 +99,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VIEW-02 | Phase 8 | Pending |
 | VIEW-03 | Phase 8 | Pending |
 | TAG-01 | Phase 6 | Complete |
-| TAG-02 | Phase 6 | Pending |
+| TAG-02 | Phase 6 | Complete |
 | STOR-01 | Phase 2 | Complete |
 | STOR-02 | Phase 2 | Complete |
 | STOR-03 | Phase 1 | Complete |
