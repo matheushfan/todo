@@ -1,6 +1,12 @@
 # td-ls - list tasks in current list
 # Autoloaded: file body = function body
 
+local -a status_opt priority_opt
+zparseopts -D -E - s:=status_opt -status:=status_opt p:=priority_opt -priority:=priority_opt
+
+local filter_status="${status_opt[2]:-}"
+local filter_priority="${priority_opt[2]:-}"
+
 _td_storage_init
 
 local tasks_file
@@ -8,13 +14,24 @@ tasks_file="$(_td_storage_list_path)"
 
 # Format output inside JXA to avoid JSON parsing in zsh
 local output
-output=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+output=$(JSON_DATA="$(cat "$tasks_file")" \
+  FILTER_STATUS="$filter_status" \
+  FILTER_PRIORITY="$filter_priority" \
+  osascript -l JavaScript -e '
   function run() {
     var env = $.NSProcessInfo.processInfo.environment;
     var data = JSON.parse(env.objectForKey("JSON_DATA").js);
-    if (data.tasks.length === 0) return "__EMPTY__";
-    var lines = data.tasks.map(function(t) {
-      return t.id.substring(0, 8) + "\t" + t.status + "\t" + t.priority + "\t" + t.text;
+    var fsEnv = env.objectForKey("FILTER_STATUS");
+    var fpEnv = env.objectForKey("FILTER_PRIORITY");
+    var fs = fsEnv ? fsEnv.js : "";
+    var fp = fpEnv ? fpEnv.js : "";
+    var tasks = data.tasks;
+    if (fs) tasks = tasks.filter(function(t) { return t.status === fs; });
+    if (fp) tasks = tasks.filter(function(t) { return t.priority === fp; });
+    if (tasks.length === 0) return "__EMPTY__";
+    var lines = tasks.map(function(t) {
+      var tagStr = t.tags && t.tags.length > 0 ? t.tags.join(",") : "";
+      return t.id.substring(0, 8) + "\t" + t.status + "\t" + t.priority + "\t" + tagStr + "\t" + t.text;
     });
     return lines.join("\n");
   }
@@ -25,8 +42,8 @@ if [[ "$output" == "__EMPTY__" ]] || [[ -z "$output" ]]; then
   return 0
 fi
 
-printf "  %-10s %-8s %-10s %s\n" "ID" "Status" "Priority" "Title"
+printf "  %-10s %-8s %-10s %-14s %s\n" "ID" "Status" "Priority" "Tags" "Title"
 
-while IFS=$'\t' read -r id task_status priority title; do
-  printf "  %-10s %-8s %-10s %s\n" "$id" "$task_status" "$priority" "$title"
+while IFS=$'\t' read -r id task_status priority tags title; do
+  printf "  %-10s %-8s %-10s %-14s %s\n" "$id" "$task_status" "$priority" "$tags" "$title"
 done <<< "$output"

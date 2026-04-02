@@ -136,6 +136,87 @@ assert_exit_code "add -t invalid: returns error" "1" "$bad_tag_rc"
 assert_contains "add -t invalid: error msg" "Invalid tag" "$bad_tag_out"
 
 # ============================================================
+# TAG-02: Filtering
+# ============================================================
+
+printf "\n=== TAG-02: Filtering ===\n"
+
+# Clean slate: remove all tasks, add 3 with different status/priority/tags
+# We need to work with a fresh list to get predictable results
+local filter_data='{"name":"default","statuses":["todo","doing","done"],"tasks":[]}'
+printf '%s\n' "$filter_data" > "$tasks_file"
+
+# Create 3 tasks: todo/alta+work, doing/media+personal, done/baixa
+local f_out1 f_out2 f_out3
+f_out1=$($TD_BIN add -p alta -t work "Filter task one" 2>&1)
+local f_id1="${f_out1##*task }"
+f_id1="${f_id1:0:8}"
+
+# Move second task to doing
+f_out2=$($TD_BIN add -p media -t personal "Filter task two" 2>&1)
+local f_id2="${f_out2##*task }"
+f_id2="${f_id2:0:4}"
+$TD_BIN move "$f_id2" doing >/dev/null 2>&1
+
+# Move third task to done
+f_out3=$($TD_BIN add -p baixa "Filter task three" 2>&1)
+local f_id3="${f_out3##*task }"
+f_id3="${f_id3:0:4}"
+$TD_BIN done "$f_id3" >/dev/null 2>&1
+
+# Test 13: filter by status=todo shows only todo task
+local ls_todo
+ls_todo=$($TD_BIN ls -s todo 2>&1)
+assert_contains "ls -s todo: shows todo task" "Filter task one" "$ls_todo"
+# Should NOT contain the doing or done tasks
+local ls_todo_no_doing=true
+[[ "$ls_todo" == *"Filter task two"* ]] && ls_todo_no_doing=false
+assert_eq "ls -s todo: excludes doing task" "true" "$ls_todo_no_doing"
+
+# Test 14: filter by status=doing shows only doing task
+local ls_doing
+ls_doing=$($TD_BIN ls -s doing 2>&1)
+assert_contains "ls -s doing: shows doing task" "Filter task two" "$ls_doing"
+local ls_doing_no_todo=true
+[[ "$ls_doing" == *"Filter task one"* ]] && ls_doing_no_todo=false
+assert_eq "ls -s doing: excludes todo task" "true" "$ls_doing_no_todo"
+
+# Test 15: filter by priority=alta shows only alta task
+local ls_alta
+ls_alta=$($TD_BIN ls -p alta 2>&1)
+assert_contains "ls -p alta: shows alta task" "Filter task one" "$ls_alta"
+local ls_alta_no_media=true
+[[ "$ls_alta" == *"Filter task two"* ]] && ls_alta_no_media=false
+assert_eq "ls -p alta: excludes media task" "true" "$ls_alta_no_media"
+
+# Test 16: combined filter status=todo + priority=alta
+local ls_combo
+ls_combo=$($TD_BIN ls -s todo -p alta 2>&1)
+assert_contains "ls -s todo -p alta: shows matching task" "Filter task one" "$ls_combo"
+local ls_combo_no_other=true
+[[ "$ls_combo" == *"Filter task two"* ]] && ls_combo_no_other=false
+assert_eq "ls -s todo -p alta: excludes non-matching" "true" "$ls_combo_no_other"
+
+# Test 17: combined filter that matches nothing
+local ls_empty
+ls_empty=$($TD_BIN ls -s done -p alta 2>&1)
+assert_contains "ls -s done -p alta: shows empty msg" "No tasks" "$ls_empty"
+
+# Test 18: no filters shows all tasks
+local ls_all
+ls_all=$($TD_BIN ls 2>&1)
+assert_contains "ls no filter: shows task one" "Filter task one" "$ls_all"
+assert_contains "ls no filter: shows task two" "Filter task two" "$ls_all"
+assert_contains "ls no filter: shows task three" "Filter task three" "$ls_all"
+
+# Test 19: output includes Tags column header
+assert_contains "ls output: Tags column header" "Tags" "$ls_all"
+
+# Test 20: output includes tag values
+assert_contains "ls output: work tag in output" "work" "$ls_all"
+assert_contains "ls output: personal tag in output" "personal" "$ls_all"
+
+# ============================================================
 # Summary
 # ============================================================
 
