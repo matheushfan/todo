@@ -20,7 +20,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Priorities
 
 - [x] **PRIO-01**: User can assign priority (alta/média/baixa) when creating or editing a task
-- [ ] **PRIO-02**: Tasks display with color-coded priorities (vermelho/amarelo/verde)
+- [x] **PRIO-02**: Tasks display with color-coded priorities (vermelho/amarelo/verde)
 
 ### Multi-List
 
@@ -31,7 +31,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Visualization
 
-- [ ] **VIEW-01**: Task listing displays with colored output using ANSI escape codes
+- [x] **VIEW-01**: Task listing displays with colored output using ANSI escape codes
 - [ ] **VIEW-02**: Kanban inline view renders columns side-by-side per status
 - [ ] **VIEW-03**: Automatic fallback to stacked list view when terminal is too narrow
 
@@ -90,12 +90,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TASK-06 | Phase 4 | Complete |
 | TASK-07 | Phase 8 | Pending |
 | PRIO-01 | Phase 4 | Complete |
-| PRIO-02 | Phase 7 | Pending |
+| PRIO-02 | Phase 7 | Complete |
 | LIST-01 | Phase 5 | Complete |
 | LIST-02 | Phase 5 | Complete |
 | LIST-03 | Phase 5 | Complete |
 | LIST-04 | Phase 6 | Complete |
-| VIEW-01 | Phase 7 | Pending |
+| VIEW-01 | Phase 7 | Complete |
 | VIEW-02 | Phase 8 | Pending |
 | VIEW-03 | Phase 8 | Pending |
 | TAG-01 | Phase 6 | Complete |
