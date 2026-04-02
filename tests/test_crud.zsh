@@ -108,6 +108,87 @@ assert_contains "ls: shows first task" "Buy milk" "$ls_multi"
 assert_contains "ls: shows second task" "Second task" "$ls_multi"
 
 # ============================================================
+# TASK-02: td-edit
+# ============================================================
+
+printf "\n=== TASK-02: td-edit ===\n"
+
+# Test: edit changes task title
+local edit_add_out
+edit_add_out=$($TD_BIN add "Original title" 2>&1)
+local edit_short_id="${edit_add_out##*task }"
+edit_short_id="${edit_short_id:0:4}"
+local edit_out
+edit_out=$($TD_BIN edit "$edit_short_id" New title 2>&1)
+local edit_rc=$?
+assert_exit_code "edit: changes task title (exit 0)" "0" "$edit_rc"
+local edit_ls_out
+edit_ls_out=$($TD_BIN ls 2>&1)
+assert_contains "edit: new title appears in ls" "New title" "$edit_ls_out"
+
+# Test: edit no args returns error
+local edit_noargs_out
+edit_noargs_out=$($TD_BIN edit 2>&1)
+local edit_noargs_rc=$?
+assert_exit_code "edit: no args returns error" "1" "$edit_noargs_rc"
+
+# Test: edit no new title returns error
+local edit_notitle_add
+edit_notitle_add=$($TD_BIN add "No title edit" 2>&1)
+local edit_notitle_id="${edit_notitle_add##*task }"
+edit_notitle_id="${edit_notitle_id:0:4}"
+local edit_notitle_out
+edit_notitle_out=$($TD_BIN edit "$edit_notitle_id" 2>&1)
+local edit_notitle_rc=$?
+assert_exit_code "edit: no new title returns error" "1" "$edit_notitle_rc"
+
+# Test: edit invalid ID returns error
+local edit_bad_out
+edit_bad_out=$($TD_BIN edit ZZZZZZ "text" 2>&1)
+local edit_bad_rc=$?
+assert_exit_code "edit: invalid ID returns error" "1" "$edit_bad_rc"
+assert_contains "edit: invalid ID shows not found" "No task matching" "$edit_bad_out"
+
+# ============================================================
+# TASK-03: td-rm
+# ============================================================
+
+printf "\n=== TASK-03: td-rm ===\n"
+
+# Test: rm removes task
+local rm_add_out
+rm_add_out=$($TD_BIN add "Delete me" 2>&1)
+local rm_short_id="${rm_add_out##*task }"
+rm_short_id="${rm_short_id:0:4}"
+local rm_out
+rm_out=$($TD_BIN rm "$rm_short_id" 2>&1)
+local rm_rc=$?
+assert_exit_code "rm: removes task (exit 0)" "0" "$rm_rc"
+local rm_ls_out
+rm_ls_out=$($TD_BIN ls 2>&1)
+if [[ "$rm_ls_out" != *"Delete me"* ]]; then
+  TESTS_RUN=$((TESTS_RUN + 1))
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+  printf "  PASS: rm: task no longer in ls\n"
+else
+  TESTS_RUN=$((TESTS_RUN + 1))
+  TESTS_FAILED=$((TESTS_FAILED + 1))
+  printf "  FAIL: rm: task still in ls\n    actual: %s\n" "$rm_ls_out"
+fi
+
+# Test: rm no args returns error
+local rm_noargs_out
+rm_noargs_out=$($TD_BIN rm 2>&1)
+local rm_noargs_rc=$?
+assert_exit_code "rm: no args returns error" "1" "$rm_noargs_rc"
+
+# Test: rm invalid ID returns error
+local rm_bad_out
+rm_bad_out=$($TD_BIN rm ZZZZZZ 2>&1)
+local rm_bad_rc=$?
+assert_exit_code "rm: invalid ID returns error" "1" "$rm_bad_rc"
+
+# ============================================================
 # Summary
 # ============================================================
 
