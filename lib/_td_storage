@@ -6,7 +6,15 @@ _td_storage_init() {
   local data_dir="$TD_DATA"
   local default_dir="$data_dir/lists/default"
 
-  [[ -d "$default_dir" ]] && return 0
+  if [[ -d "$default_dir" ]]; then
+    # Pitfall 4 fix: recreate config.json if missing but default dir exists
+    local config="$data_dir/config.json"
+    if [[ ! -f "$config" ]]; then
+      printf '{"active_list":"default","version":1}\n' \
+        > "$config" || return 1
+    fi
+    return 0
+  fi
 
   mkdir -p "$default_dir" || {
     _td_error "Failed to create data directory: $default_dir"
@@ -148,9 +156,28 @@ _td_storage_new_id() {
   uuidgen
 }
 
+# Get active list name from config.json (falls back to "default")
+_td_storage_active_list() {
+  local config="$(_td_storage_config_path)"
+  if [[ -f "$config" ]]; then
+    local active
+    active=$(JSON_DATA="$(cat "$config")" osascript -l JavaScript -e '
+      function run() {
+        var data = JSON.parse(
+          $.NSProcessInfo.processInfo.environment.objectForKey("JSON_DATA").js
+        );
+        return data.active_list || "default";
+      }
+    ' 2>/dev/null)
+    printf '%s' "${active:-default}"
+  else
+    printf 'default'
+  fi
+}
+
 # Get path to tasks file for a list
 _td_storage_list_path() {
-  local list="${1:-default}"
+  local list="${1:-$(_td_storage_active_list)}"
   printf '%s/lists/%s/tasks.json' "$TD_DATA" "$list"
 }
 
