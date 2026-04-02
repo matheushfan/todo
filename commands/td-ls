@@ -42,8 +42,19 @@ if [[ "$output" == "__EMPTY__" ]] || [[ -z "$output" ]]; then
   return 0
 fi
 
-printf "  %-10s %-8s %-10s %-14s %s\n" "ID" "Status" "Priority" "Tags" "Title"
+printf "  ${TD_COLORS[bold]}%-10s %-8s %-10s %-14s %s${TD_COLORS[reset]}\n" \
+  "ID" "Status" "Priority" "Tags" "Title"
 
 while IFS=$'\t' read -r id task_status priority tags title; do
-  printf "  %-10s %-8s %-10s %-14s %s\n" "$id" "$task_status" "$priority" "$tags" "$title"
+  local color_priority="${TD_PRIORITY_COLORS[$priority]}${priority}${TD_COLORS[reset]}"
+  local color_status="${TD_COLORS[cyan]}${task_status}${TD_COLORS[reset]}"
+  local color_tags="${TD_COLORS[dim]}${tags}${TD_COLORS[reset]}"
+
+  printf "  %-10s " "$id"
+  _td_printf_colored "$color_status" 8
+  printf " "
+  _td_printf_colored "$color_priority" 10
+  printf " "
+  _td_printf_colored "$color_tags" 14
+  printf " %s\n" "$title"
 done <<< "$output"

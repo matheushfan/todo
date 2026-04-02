@@ -109,7 +109,9 @@ _status_ls() {
     }
   ' 2>/dev/null)
 
-  printf '%s\n' "$lines"
+  while IFS= read -r line; do
+    printf '%s%s%s\n' "${TD_COLORS[cyan]}" "$line" "${TD_COLORS[reset]}"
+  done <<< "$lines"
 }
 
 local subcmd="${1:-}"
