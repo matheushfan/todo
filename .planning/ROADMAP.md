@@ -60,7 +60,7 @@ Plans:
   4. User can list all tasks in the current list with readable formatted output
 **Plans:** 2 plans
 Plans:
-- [ ] 03-01-PLAN.md -- ID resolution helper, td-add, td-ls commands, integration tests
+- [x] 03-01-PLAN.md -- ID resolution helper, td-add, td-ls commands, integration tests
 - [ ] 03-02-PLAN.md -- td-edit, td-rm commands, expanded tests, help text update
 
 ### Phase 4: Task Workflow
