@@ -1,0 +1,32 @@
+# td-ls - list tasks in current list
+# Autoloaded: file body = function body
+
+_td_storage_init
+
+local tasks_file
+tasks_file="$(_td_storage_list_path)"
+
+# Format output inside JXA to avoid JSON parsing in zsh
+local output
+output=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+  function run() {
+    var env = $.NSProcessInfo.processInfo.environment;
+    var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+    if (data.tasks.length === 0) return "__EMPTY__";
+    var lines = data.tasks.map(function(t) {
+      return t.id.substring(0, 8) + "\t" + t.status + "\t" + t.priority + "\t" + t.text;
+    });
+    return lines.join("\n");
+  }
+' 2>/dev/null)
+
+if [[ "$output" == "__EMPTY__" ]] || [[ -z "$output" ]]; then
+  _td_success "No tasks yet. Run 'todo add' to create one."
+  return 0
+fi
+
+printf "  %-10s %-8s %-10s %s\n" "ID" "Status" "Priority" "Title"
+
+while IFS=$'\t' read -r id task_status priority title; do
+  printf "  %-10s %-8s %-10s %s\n" "$id" "$task_status" "$priority" "$title"
+done <<< "$output"
