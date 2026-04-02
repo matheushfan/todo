@@ -1,0 +1,225 @@
+# td-bulk - bulk operations on multiple tasks
+# Autoloaded: file body = function body
+
+# --- Helper: collect task IDs from args, --all, or --status ---
+_td_bulk_collect_ids() {
+  local tasks_file="$1"
+  shift
+
+  local flag_all=0
+  local flag_status=""
+  local -a positional=()
+
+  # Manual arg parsing (zparseopts doesn't handle mixed positional + flags well here)
+  while (( $# > 0 )); do
+    case "$1" in
+      --all)
+        flag_all=1
+        shift
+        ;;
+      --status)
+        shift
+        flag_status="$1"
+        shift
+        ;;
+      *)
+        positional+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  if (( flag_all )); then
+    # Get all task IDs via JXA
+    local ids
+    ids=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+      function run() {
+        var env = $.NSProcessInfo.processInfo.environment;
+        var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+        return data.tasks.map(function(t) { return t.id; }).join(",");
+      }
+    ' 2>/dev/null)
+    printf '%s' "$ids"
+    return 0
+  fi
+
+  if [[ -n "$flag_status" ]]; then
+    # Get IDs of tasks matching status
+    local ids
+    ids=$(FILTER_STATUS="$flag_status" JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+      function run() {
+        var env = $.NSProcessInfo.processInfo.environment;
+        var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+        var st = env.objectForKey("FILTER_STATUS").js;
+        var matched = data.tasks.filter(function(t) { return t.status === st; });
+        return matched.map(function(t) { return t.id; }).join(",");
+      }
+    ' 2>/dev/null)
+    printf '%s' "$ids"
+    return 0
+  fi
+
+  # Positional IDs -- resolve each via _td_resolve_task_id
+  if (( ${#positional[@]} == 0 )); then
+    _td_error "No tasks specified"
+    return 1
+  fi
+
+  local -a resolved=()
+  local id_prefix full_id
+  for id_prefix in "${positional[@]}"; do
+    full_id="$(_td_resolve_task_id "$tasks_file" "$id_prefix")" || {
+      _td_error "Aborting bulk operation: failed to resolve '$id_prefix'"
+      return 1
+    }
+    resolved+=("$full_id")
+  done
+
+  printf '%s' "${(j:,:)resolved}"
+  return 0
+}
+
+# --- Subcommand: done ---
+_td_bulk_done() {
+  _td_storage_init
+
+  local tasks_file
+  tasks_file="$(_td_storage_list_path)"
+
+  local ids_csv
+  ids_csv="$(_td_bulk_collect_ids "$tasks_file" "$@")" || return 1
+
+  if [[ -z "$ids_csv" ]]; then
+    _td_success "Completed 0 task(s)"
+    return 0
+  fi
+
+  export TASK_IDS="$ids_csv"
+  _td_storage_modify "$tasks_file" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var ids = env.objectForKey("TASK_IDS").js.split(",");
+    var doneStatus = data.statuses[data.statuses.length - 1];
+    var count = 0;
+    ids.forEach(function(tid) {
+      var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
+      if (idx >= 0) { data.tasks[idx].status = doneStatus; data.tasks[idx].updated = new Date().toISOString(); count++; }
+    });
+  '
+  local rc=$?
+  unset TASK_IDS
+
+  if (( rc == 0 )); then
+    # Count IDs
+    local count
+    count=$(echo "$ids_csv" | tr ',' '\n' | wc -l | tr -d ' ')
+    _td_success "Completed ${count} task(s)"
+  fi
+  return $rc
+}
+
+# --- Subcommand: move ---
+_td_bulk_move() {
+  local new_status="$1"
+  shift 2>/dev/null
+
+  [[ -z "$new_status" ]] && {
+    _td_error "Usage: todo bulk move <status> [--all|--status <s>] <ids...>"
+    return 1
+  }
+
+  _td_storage_init
+
+  local tasks_file
+  tasks_file="$(_td_storage_list_path)"
+
+  # Pre-validate status exists
+  local statuses_json
+  statuses_json="$(_td_storage_read "$tasks_file" '.statuses')"
+
+  local valid
+  valid=$(NEW_STATUS="$new_status" STATUSES="$statuses_json" osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var statuses = JSON.parse(env.objectForKey("STATUSES").js);
+      var target = env.objectForKey("NEW_STATUS").js;
+      return statuses.indexOf(target) >= 0 ? "yes" : "no";
+    }
+  ' 2>/dev/null)
+
+  [[ "$valid" != "yes" ]] && {
+    _td_error "Invalid status '$new_status'. Available: ${statuses_json}"
+    return 1
+  }
+
+  local ids_csv
+  ids_csv="$(_td_bulk_collect_ids "$tasks_file" "$@")" || return 1
+
+  if [[ -z "$ids_csv" ]]; then
+    _td_success "Moved 0 task(s) to '$new_status'"
+    return 0
+  fi
+
+  export TASK_IDS="$ids_csv"
+  export NEW_STATUS="$new_status"
+  _td_storage_modify "$tasks_file" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var ids = env.objectForKey("TASK_IDS").js.split(",");
+    var ns = env.objectForKey("NEW_STATUS").js;
+    ids.forEach(function(tid) {
+      var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
+      if (idx >= 0) { data.tasks[idx].status = ns; data.tasks[idx].updated = new Date().toISOString(); }
+    });
+  '
+  local rc=$?
+  unset TASK_IDS NEW_STATUS
+
+  if (( rc == 0 )); then
+    local count
+    count=$(echo "$ids_csv" | tr ',' '\n' | wc -l | tr -d ' ')
+    _td_success "Moved ${count} task(s) to '$new_status'"
+  fi
+  return $rc
+}
+
+# --- Subcommand: rm ---
+_td_bulk_rm() {
+  _td_storage_init
+
+  local tasks_file
+  tasks_file="$(_td_storage_list_path)"
+
+  local ids_csv
+  ids_csv="$(_td_bulk_collect_ids "$tasks_file" "$@")" || return 1
+
+  if [[ -z "$ids_csv" ]]; then
+    _td_success "Removed 0 task(s)"
+    return 0
+  fi
+
+  export TASK_IDS="$ids_csv"
+  _td_storage_modify "$tasks_file" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var ids = env.objectForKey("TASK_IDS").js.split(",");
+    data.tasks = data.tasks.filter(function(t) { return ids.indexOf(t.id) === -1; });
+  '
+  local rc=$?
+  unset TASK_IDS
+
+  if (( rc == 0 )); then
+    local count
+    count=$(echo "$ids_csv" | tr ',' '\n' | wc -l | tr -d ' ')
+    _td_success "Removed ${count} task(s)"
+  fi
+  return $rc
+}
+
+# --- Main dispatch ---
+local subcmd="$1"
+shift 2>/dev/null
+
+case "$subcmd" in
+  done) _td_bulk_done "$@" ;;
+  move) _td_bulk_move "$@" ;;
+  rm)   _td_bulk_rm "$@" ;;
+  *)    _td_error "Usage: todo bulk <done|move|rm> [--all|--status <s>] <ids...>"; return 1 ;;
+esac
