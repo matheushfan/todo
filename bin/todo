@@ -18,6 +18,9 @@ main() {
   # Load core utilities (needed by all paths)
   autoload -Uz _td_core && _td_core
 
+  # Load storage engine (JSON data layer)
+  autoload -Uz _td_storage && _td_storage
+
   # Dispatch
   local cmd="${1:-help}"
   shift 2>/dev/null
