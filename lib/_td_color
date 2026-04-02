@@ -1,0 +1,73 @@
+# _td_color - ANSI color rendering library
+# Autoloaded: file body = function body
+
+# TTY detection: only colorize when stdout is a terminal
+# Allow override via TD_COLOR_ENABLED if already set externally (for testing)
+if [[ -z "${TD_COLOR_ENABLED+x}" ]]; then
+  typeset -g TD_COLOR_ENABLED=0
+  if [[ -t 1 ]] && [[ "${TERM:-dumb}" != "dumb" ]]; then
+    TD_COLOR_ENABLED=1
+  fi
+fi
+
+# Color constants
+typeset -gA TD_COLORS
+if (( TD_COLOR_ENABLED )); then
+  TD_COLORS[red]=$'\033[0;31m'
+  TD_COLORS[green]=$'\033[0;32m'
+  TD_COLORS[yellow]=$'\033[0;33m'
+  TD_COLORS[blue]=$'\033[0;34m'
+  TD_COLORS[magenta]=$'\033[0;35m'
+  TD_COLORS[cyan]=$'\033[0;36m'
+  TD_COLORS[bold]=$'\033[1m'
+  TD_COLORS[dim]=$'\033[2m'
+  TD_COLORS[reset]=$'\033[0m'
+else
+  TD_COLORS[red]=''
+  TD_COLORS[green]=''
+  TD_COLORS[yellow]=''
+  TD_COLORS[blue]=''
+  TD_COLORS[magenta]=''
+  TD_COLORS[cyan]=''
+  TD_COLORS[bold]=''
+  TD_COLORS[dim]=''
+  TD_COLORS[reset]=''
+fi
+
+# Priority color map (Portuguese priority names)
+typeset -gA TD_PRIORITY_COLORS
+TD_PRIORITY_COLORS[alta]="${TD_COLORS[red]}"
+TD_PRIORITY_COLORS[media]="${TD_COLORS[yellow]}"
+TD_PRIORITY_COLORS[baixa]="${TD_COLORS[green]}"
+
+# Colorize a string: _td_colorize <color_name> <text>
+_td_colorize() {
+  printf '%s%s%s' "${TD_COLORS[$1]}" "$2" "${TD_COLORS[reset]}"
+}
+
+# Strip ANSI escape codes (pure zsh, no fork)
+# Critical for Phase 8 kanban width calculations
+_td_strip_ansi() {
+  setopt LOCAL_OPTIONS EXTENDED_GLOB
+  local esc=$'\033'
+  local pattern="${esc}\[[0-9;]##m"
+  printf '%s' "${1//${~pattern}/}"
+}
+
+# Visible length of a string (after stripping ANSI codes)
+_td_visible_len() {
+  local stripped
+  stripped="$(_td_strip_ansi "$1")"
+  printf '%d' "${#stripped}"
+}
+
+# Printf with padding compensation for ANSI codes
+# Usage: _td_printf_colored <content> <width>
+_td_printf_colored() {
+  local content="$1" width="$2"
+  local visible_len=$(_td_visible_len "$content")
+  local total_len=${#content}
+  local extra=$((total_len - visible_len))
+  local adjusted_width=$((width + extra))
+  printf "%-${adjusted_width}s" "$content"
+}

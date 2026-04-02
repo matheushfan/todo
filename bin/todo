@@ -21,6 +21,9 @@ main() {
   # Load storage engine (JSON data layer)
   autoload -Uz _td_storage && _td_storage
 
+  # Load color rendering library
+  autoload -Uz _td_color && _td_color
+
   # Dispatch
   local cmd="${1:-help}"
   shift 2>/dev/null
