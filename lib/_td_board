@@ -1,0 +1,250 @@
+# _td_board - kanban board rendering engine
+# Autoloaded: file body = function body
+
+# Render kanban board (main entry point)
+# Usage: _td_board_render <tasks_file>
+_td_board_render() {
+  local tasks_file="$1"
+
+  [[ -f "$tasks_file" ]] || { _td_error "File not found: $tasks_file"; return 1; }
+
+  # Terminal width detection
+  local term_width=${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}
+
+  # Get statuses from tasks.json via single JXA call
+  local statuses_lines
+  statuses_lines=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+      return data.statuses.join("\n");
+    }
+  ' 2>/dev/null) || { _td_error "Failed to read statuses"; return 1; }
+
+  local -a statuses=("${(@f)statuses_lines}")
+  local num_cols=${#statuses[@]}
+
+  if (( num_cols == 0 )); then
+    _td_error "No statuses defined"
+    return 1
+  fi
+
+  # Column width: subtract separators (num_cols + 1 for | edges and between)
+  local col_width=$(( (term_width - num_cols - 1) / num_cols ))
+
+  # Fallback to stacked when too narrow or not a TTY
+  if (( col_width < 20 )); then
+    _td_board_stacked "$tasks_file" "$statuses_lines"
+    return 0
+  fi
+
+  # Single JXA call to group ALL tasks by status
+  # Returns blocks separated by __COL_SEP__, tasks newline-separated, fields tab-separated
+  local grouped_output
+  grouped_output=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+      var blocks = data.statuses.map(function(status) {
+        var tasks = data.tasks.filter(function(t) { return t.status === status; });
+        if (tasks.length === 0) return "";
+        var lines = tasks.map(function(t) {
+          var tagStr = t.tags && t.tags.length > 0 ? t.tags.join(",") : "";
+          return t.id.substring(0, 8) + "\t" + t.priority + "\t" + tagStr + "\t" + t.text;
+        });
+        return lines.join("\n");
+      });
+      return blocks.join("\n__COL_SEP__\n");
+    }
+  ' 2>/dev/null)
+
+  # Parse grouped output into per-column arrays
+  local -a col_data
+  local -a col_counts
+  local max_rows=0
+
+  # Split by __COL_SEP__
+  local col_idx=0
+  local IFS_BAK="$IFS"
+
+  # Build arrays for each column
+  local -A task_cells  # task_cells[col,row] = formatted string
+
+  local block
+  local -a blocks
+  # Split on __COL_SEP__
+  blocks=("${(@s:__COL_SEP__:)grouped_output}")
+
+  for (( c=1; c<=num_cols; c++ )); do
+    local raw_block="${blocks[$c]}"
+    # Trim leading/trailing newlines
+    raw_block="${raw_block#$'\n'}"
+    raw_block="${raw_block%$'\n'}"
+
+    if [[ -z "$raw_block" ]]; then
+      col_counts[$c]=0
+    else
+      local -a lines=("${(@f)raw_block}")
+      col_counts[$c]=${#lines[@]}
+      (( ${#lines[@]} > max_rows )) && max_rows=${#lines[@]}
+
+      local row_idx=1
+      for line in "${lines[@]}"; do
+        task_cells[$c,$row_idx]="$line"
+        row_idx=$((row_idx + 1))
+      done
+    fi
+  done
+
+  # --- Render header row ---
+  printf "|"
+  for (( c=1; c<=num_cols; c++ )); do
+    local header="${statuses[$c]:u}"  # uppercase
+    local header_colored="${TD_COLORS[bold]}${TD_COLORS[cyan]}${header}${TD_COLORS[reset]}"
+    # Center the header in col_width
+    local visible_hdr_len=${#header}
+    local pad_left=$(( (col_width - visible_hdr_len) / 2 ))
+    local pad_right=$(( col_width - visible_hdr_len - pad_left ))
+    printf "%*s%s%*s|" "$pad_left" "" "$header_colored" "$pad_right" ""
+  done
+  printf "\n"
+
+  # --- Render separator row ---
+  printf "+"
+  for (( c=1; c<=num_cols; c++ )); do
+    printf '%*s+' "$col_width" '' | tr ' ' '='
+  done
+  printf "\n"
+
+  # --- Render task rows ---
+  if (( max_rows == 0 )); then
+    # No tasks at all -- show empty board message
+    printf "|"
+    local msg="No tasks yet. Run 'todo add' to create one."
+    local total_inner=$(( col_width * num_cols + num_cols - 1 ))
+    local msg_pad_left=$(( (total_inner - ${#msg}) / 2 ))
+    local msg_pad_right=$(( total_inner - ${#msg} - msg_pad_left ))
+    printf "%*s%s%*s" "$msg_pad_left" "" "$msg" "$msg_pad_right" ""
+    printf "|\n"
+    return 0
+  fi
+
+  for (( row=1; row<=max_rows; row++ )); do
+    printf "|"
+    for (( c=1; c<=num_cols; c++ )); do
+      local cell_raw="${task_cells[$c,$row]}"
+      if [[ -z "$cell_raw" ]]; then
+        # Empty cell -- pad with spaces
+        printf "%-${col_width}s|" ""
+      else
+        # Parse: id\tpriority\ttags\ttext
+        local cell_id cell_pri cell_tags cell_text
+        cell_id="${cell_raw%%	*}"
+        local rest="${cell_raw#*	}"
+        cell_pri="${rest%%	*}"
+        rest="${rest#*	}"
+        cell_tags="${rest%%	*}"
+        cell_text="${rest#*	}"
+
+        local formatted
+        formatted="$(_td_board_format_card "$cell_id" "$cell_pri" "$cell_tags" "$cell_text" "$col_width")"
+        _td_printf_colored "$formatted" "$col_width"
+        printf "|"
+      fi
+    done
+    printf "\n"
+  done
+}
+
+# Format a single task card for a kanban cell
+# Usage: _td_board_format_card <id> <priority> <tags> <text> <width>
+_td_board_format_card() {
+  local id="$1" priority="$2" tags="$3" text="$4" width="$5"
+
+  # Priority indicator
+  local pri_char
+  case "$priority" in
+    alta)  pri_char="${TD_PRIORITY_COLORS[alta]}!${TD_COLORS[reset]}" ;;
+    media) pri_char="${TD_PRIORITY_COLORS[media]}~${TD_COLORS[reset]}" ;;
+    baixa) pri_char="${TD_PRIORITY_COLORS[baixa]}.${TD_COLORS[reset]}" ;;
+    *)     pri_char=" " ;;
+  esac
+
+  # Short ID (8 chars), dim
+  local id_short="${id:0:8}"
+  local id_colored="${TD_COLORS[dim]}${id_short}${TD_COLORS[reset]}"
+
+  # Truncate text BEFORE colorizing
+  # Prefix visible: "! ABCD1234 " = 1 + 1 + 8 + 1 = 11 chars, plus 1 padding = 12
+  local prefix_visible_len=12
+  local max_text=$((width - prefix_visible_len - 1))
+  if (( max_text < 1 )); then
+    max_text=1
+  fi
+  if (( ${#text} > max_text )); then
+    text="${text:0:$((max_text - 1))}~"
+  fi
+
+  printf '%s %s %s' "$pri_char" "$id_colored" "$text"
+}
+
+# Stacked fallback view (narrow terminal)
+# Usage: _td_board_stacked <tasks_file> [statuses_lines]
+_td_board_stacked() {
+  local tasks_file="$1"
+  local statuses_lines="$2"
+
+  # If statuses not passed, read them
+  if [[ -z "$statuses_lines" ]]; then
+    statuses_lines=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+      function run() {
+        var env = $.NSProcessInfo.processInfo.environment;
+        var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+        return data.statuses.join("\n");
+      }
+    ' 2>/dev/null)
+  fi
+
+  local -a statuses=("${(@f)statuses_lines}")
+
+  # Get grouped output (single JXA call)
+  local grouped_output
+  grouped_output=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+      var blocks = data.statuses.map(function(status) {
+        var tasks = data.tasks.filter(function(t) { return t.status === status; });
+        if (tasks.length === 0) return "";
+        var lines = tasks.map(function(t) {
+          var pri = "";
+          if (t.priority === "alta") pri = "!";
+          else if (t.priority === "media") pri = "~";
+          else if (t.priority === "baixa") pri = ".";
+          return pri + " " + t.id.substring(0, 8) + " " + t.text;
+        });
+        return lines.join("\n");
+      });
+      return blocks.join("\n__COL_SEP__\n");
+    }
+  ' 2>/dev/null)
+
+  local -a blocks
+  blocks=("${(@s:__COL_SEP__:)grouped_output}")
+
+  for (( c=1; c<=${#statuses[@]}; c++ )); do
+    local status_name="${statuses[$c]:u}"
+    printf "\n%s%s%s%s\n" "${TD_COLORS[bold]}" "${TD_COLORS[cyan]}" "$status_name" "${TD_COLORS[reset]}"
+    printf "%s\n" "---"
+
+    local raw_block="${blocks[$c]}"
+    raw_block="${raw_block#$'\n'}"
+    raw_block="${raw_block%$'\n'}"
+
+    if [[ -z "$raw_block" ]]; then
+      printf "%s(empty)%s\n" "${TD_COLORS[dim]}" "${TD_COLORS[reset]}"
+    else
+      printf '%s\n' "$raw_block"
+    fi
+  done
+}
