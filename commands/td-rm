@@ -1,0 +1,28 @@
+# td-rm - remove a task permanently
+# Autoloaded: file body = function body
+
+local id_prefix="$1"
+
+[[ -z "$id_prefix" ]] && {
+  _td_error "Usage: todo rm <task-id>"
+  return 1
+}
+
+_td_storage_init
+
+local tasks_file
+tasks_file="$(_td_storage_list_path)"
+
+local task_id
+task_id="$(_td_resolve_task_id "$tasks_file" "$id_prefix")" || return 1
+
+export TASK_ID="$task_id"
+_td_storage_modify "$tasks_file" '
+  var tid = $.NSProcessInfo.processInfo.environment.objectForKey("TASK_ID").js;
+  data.tasks = data.tasks.filter(function(t) { return t.id !== tid; });
+'
+local rc=$?
+unset TASK_ID
+
+(( rc == 0 )) && _td_success "Removed task ${task_id:0:8}"
+return $rc
