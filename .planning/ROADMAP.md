@@ -125,7 +125,7 @@ Plans:
   4. User can perform bulk operations on multiple tasks at once (e.g., move, delete, tag)
 **Plans:** 2 plans
 Plans:
-- [ ] 08-01-PLAN.md -- Kanban board rendering engine (_td_board), td-board command, default dispatch change
+- [x] 08-01-PLAN.md -- Kanban board rendering engine (_td_board), td-board command, default dispatch change
 - [x] 08-02-PLAN.md -- Bulk operations command (td-bulk) with done/move/rm subcommands
 
 ## Progress

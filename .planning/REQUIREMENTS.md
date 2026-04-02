@@ -32,8 +32,8 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Visualization
 
 - [x] **VIEW-01**: Task listing displays with colored output using ANSI escape codes
-- [ ] **VIEW-02**: Kanban inline view renders columns side-by-side per status
-- [ ] **VIEW-03**: Automatic fallback to stacked list view when terminal is too narrow
+- [x] **VIEW-02**: Kanban inline view renders columns side-by-side per status
+- [x] **VIEW-03**: Automatic fallback to stacked list view when terminal is too narrow
 
 ### Tags
 
@@ -96,8 +96,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LIST-03 | Phase 5 | Complete |
 | LIST-04 | Phase 6 | Complete |
 | VIEW-01 | Phase 7 | Complete |
-| VIEW-02 | Phase 8 | Pending |
-| VIEW-03 | Phase 8 | Pending |
+| VIEW-02 | Phase 8 | Complete |
+| VIEW-03 | Phase 8 | Complete |
 | TAG-01 | Phase 6 | Complete |
 | TAG-02 | Phase 6 | Complete |
 | STOR-01 | Phase 2 | Complete |
