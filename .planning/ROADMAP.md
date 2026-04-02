@@ -123,7 +123,10 @@ Plans:
   2. Kanban columns auto-size based on terminal width
   3. When terminal is too narrow for side-by-side, view falls back to stacked list automatically
   4. User can perform bulk operations on multiple tasks at once (e.g., move, delete, tag)
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 08-01-PLAN.md -- Kanban board rendering engine (_td_board), td-board command, default dispatch change
+- [ ] 08-02-PLAN.md -- Bulk operations command (td-bulk) with done/move/rm subcommands
 
 ## Progress
 
@@ -139,4 +142,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 5. Multi-List Management | 0/1 | Not started | - |
 | 6. Custom Statuses & Tags | 0/2 | Not started | - |
 | 7. Colored Output & List View | 0/1 | Not started | - |
-| 8. Kanban View & Bulk Operations | 0/TBD | Not started | - |
+| 8. Kanban View & Bulk Operations | 0/2 | Not started | - |
