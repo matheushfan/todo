@@ -1,12 +1,27 @@
 # td-add - create a new task
 # Autoloaded: file body = function body
 
+local -a priority_opt
+zparseopts -D -E - p:=priority_opt -priority:=priority_opt
+
 local text="$*"
 
 [[ -z "$text" ]] && {
-  _td_error "Usage: todo add <title>"
+  _td_error "Usage: todo add [-p alta|media|baixa] <title>"
   return 1
 }
+
+local task_priority="media"
+if (( ${#priority_opt} > 0 )); then
+  task_priority="${priority_opt[2]}"
+  case "$task_priority" in
+    alta|media|baixa) ;;
+    *)
+      _td_error "Invalid priority '$task_priority'. Use: alta, media, baixa"
+      return 1
+      ;;
+  esac
+fi
 
 _td_storage_init
 
@@ -14,6 +29,6 @@ local tasks_file
 tasks_file="$(_td_storage_list_path)"
 
 local task_id
-task_id="$(_td_storage_add_task "$tasks_file" "$text")" || return 1
+task_id="$(_td_storage_add_task "$tasks_file" "$text" "todo" "$task_priority")" || return 1
 
 _td_success "Created task ${task_id:0:8}"

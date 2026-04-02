@@ -8,12 +8,15 @@ todo - Task manager for the terminal
 Usage: todo <command> [options]
 
 Commands:
-  add <title>        Add a new task
-  ls                 List all tasks
-  edit <id> <title>  Edit task title
-  rm <id>            Remove a task
-  help               Show this help message
-  version            Show version
+  add [-p priority] <title>  Add a new task
+  ls                         List all tasks
+  edit <id> <title>          Edit task title
+  rm <id>                    Remove a task
+  done <id>                  Mark task as completed
+  move <id> <status>         Move task to a status (todo, doing, done)
+  priority <id> <value>      Set priority (alta, media, baixa)
+  help                       Show this help message
+  version                    Show version
 
 Run 'todo help <command>' for command-specific help.
 HELP

@@ -1,0 +1,48 @@
+# td-priority - change task priority
+# Autoloaded: file body = function body
+
+local id_prefix="$1"
+local new_priority="$2"
+
+[[ -z "$id_prefix" ]] && {
+  _td_error "Usage: todo priority <task-id> <alta|media|baixa>"
+  return 1
+}
+
+[[ -z "$new_priority" ]] && {
+  _td_error "Usage: todo priority <task-id> <alta|media|baixa>"
+  return 1
+}
+
+case "$new_priority" in
+  alta|media|baixa) ;;
+  *)
+    _td_error "Invalid priority '$new_priority'. Use: alta, media, baixa"
+    return 1
+    ;;
+esac
+
+_td_storage_init
+
+local tasks_file
+tasks_file="$(_td_storage_list_path)"
+
+local task_id
+task_id="$(_td_resolve_task_id "$tasks_file" "$id_prefix")" || return 1
+
+export TASK_ID="$task_id"
+export NEW_PRIORITY="$new_priority"
+_td_storage_modify "$tasks_file" '
+  var env = $.NSProcessInfo.processInfo.environment;
+  var tid = env.objectForKey("TASK_ID").js;
+  var np = env.objectForKey("NEW_PRIORITY").js;
+  var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
+  if (idx === -1) throw new Error("not found");
+  data.tasks[idx].priority = np;
+  data.tasks[idx].updated = new Date().toISOString();
+'
+local rc=$?
+unset TASK_ID NEW_PRIORITY
+
+(( rc == 0 )) && _td_success "Set priority of ${task_id:0:8} to '$new_priority'"
+return $rc

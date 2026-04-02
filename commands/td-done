@@ -1,0 +1,32 @@
+# td-done - mark task as completed
+# Autoloaded: file body = function body
+
+local id_prefix="$1"
+
+[[ -z "$id_prefix" ]] && {
+  _td_error "Usage: todo done <task-id>"
+  return 1
+}
+
+_td_storage_init
+
+local tasks_file
+tasks_file="$(_td_storage_list_path)"
+
+local task_id
+task_id="$(_td_resolve_task_id "$tasks_file" "$id_prefix")" || return 1
+
+export TASK_ID="$task_id"
+_td_storage_modify "$tasks_file" '
+  var env = $.NSProcessInfo.processInfo.environment;
+  var tid = env.objectForKey("TASK_ID").js;
+  var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
+  if (idx === -1) throw new Error("not found");
+  data.tasks[idx].status = data.statuses[data.statuses.length - 1];
+  data.tasks[idx].updated = new Date().toISOString();
+'
+local rc=$?
+unset TASK_ID
+
+(( rc == 0 )) && _td_success "Completed task ${task_id:0:8}"
+return $rc

@@ -1,0 +1,59 @@
+# td-move - move task to a different status
+# Autoloaded: file body = function body
+
+local id_prefix="$1"
+local new_status="$2"
+
+[[ -z "$id_prefix" ]] && {
+  _td_error "Usage: todo move <task-id> <status>"
+  return 1
+}
+
+[[ -z "$new_status" ]] && {
+  _td_error "Usage: todo move <task-id> <status>"
+  return 1
+}
+
+_td_storage_init
+
+local tasks_file
+tasks_file="$(_td_storage_list_path)"
+
+local task_id
+task_id="$(_td_resolve_task_id "$tasks_file" "$id_prefix")" || return 1
+
+# Pre-validate status in zsh (not in JXA -- avoids silent failures)
+local statuses_json
+statuses_json="$(_td_storage_read "$tasks_file" '.statuses')"
+
+local valid
+valid=$(NEW_STATUS="$new_status" STATUSES="$statuses_json" osascript -l JavaScript -e '
+  function run() {
+    var env = $.NSProcessInfo.processInfo.environment;
+    var statuses = JSON.parse(env.objectForKey("STATUSES").js);
+    var target = env.objectForKey("NEW_STATUS").js;
+    return statuses.indexOf(target) >= 0 ? "yes" : "no";
+  }
+' 2>/dev/null)
+
+[[ "$valid" != "yes" ]] && {
+  _td_error "Invalid status '$new_status'. Available: ${statuses_json}"
+  return 1
+}
+
+export TASK_ID="$task_id"
+export NEW_STATUS="$new_status"
+_td_storage_modify "$tasks_file" '
+  var env = $.NSProcessInfo.processInfo.environment;
+  var tid = env.objectForKey("TASK_ID").js;
+  var ns = env.objectForKey("NEW_STATUS").js;
+  var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
+  if (idx === -1) throw new Error("not found");
+  data.tasks[idx].status = ns;
+  data.tasks[idx].updated = new Date().toISOString();
+'
+local rc=$?
+unset TASK_ID NEW_STATUS
+
+(( rc == 0 )) && _td_success "Moved task ${task_id:0:8} to '$new_status'"
+return $rc
