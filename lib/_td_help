@@ -8,13 +8,18 @@ todo - Task manager for the terminal
 Usage: todo <command> [options]
 
 Commands:
-  add [-p priority] <title>  Add a new task
-  ls                         List all tasks
+  add [-p prio] [-t tag] <title>  Add a new task
+  ls [-s status] [-p prio]   List tasks (with optional filters)
   edit <id> <title>          Edit task title
   rm <id>                    Remove a task
   done <id>                  Mark task as completed
   move <id> <status>         Move task to a status (todo, doing, done)
   priority <id> <value>      Set priority (alta, media, baixa)
+  status                     List statuses for current list
+  status add <name>          Add a custom status
+  status rm <name>           Remove a status (no tasks must use it)
+  tag add <id> <tag>         Add a tag to a task
+  tag rm <id> <tag>          Remove a tag from a task
   list                       List all lists
   list create <name>         Create a new list
   list switch <name>         Switch active list
