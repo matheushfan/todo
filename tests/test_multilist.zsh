@@ -122,6 +122,92 @@ assert_eq "work list has 1 task" "1" "$work_count"
 assert_eq "default list has 0 tasks" "0" "$default_count"
 
 # ============================================================
+# Integration Tests (CLI-level via $TD_BIN)
+# ============================================================
+
+printf "\n=== Integration: td-list command ===\n"
+
+# Fresh isolated environment for integration tests
+INT_DATA="$(mktemp -d)"
+trap "rm -rf '$TEST_DATA' '$INT_DATA'" EXIT INT TERM
+export TODOLIST_DATA="$INT_DATA"
+
+# Test 14: todo list create work creates tasks.json
+local create_out
+create_out="$(zsh "$TD_BIN" list create work 2>&1)"
+assert_eq "CLI create work succeeds" "0" "$?"
+assert_eq "CLI create work tasks.json exists" "1" "$([ -f "$INT_DATA/lists/work/tasks.json" ] && echo 1 || echo 0)"
+assert_contains "CLI create output" "Created list 'work'" "$create_out"
+
+# Test 15: todo list create work again returns error (duplicate)
+local dup_out
+dup_out="$(zsh "$TD_BIN" list create work 2>&1)"
+local dup_exit=$?
+assert_eq "CLI create duplicate exits 1" "1" "$dup_exit"
+assert_contains "CLI create duplicate error" "already exists" "$dup_out"
+
+# Test 16: todo list create "bad name" returns error (invalid chars)
+local bad_out
+bad_out="$(zsh "$TD_BIN" list create "bad name" 2>&1)"
+local bad_exit=$?
+assert_eq "CLI create invalid name exits 1" "1" "$bad_exit"
+assert_contains "CLI create invalid name error" "Invalid list name" "$bad_out"
+
+# Test 17: todo list switch work changes active_list
+local switch_out
+switch_out="$(zsh "$TD_BIN" list switch work 2>&1)"
+assert_eq "CLI switch work succeeds" "0" "$?"
+assert_contains "CLI switch output" "Switched to list 'work'" "$switch_out"
+
+# Verify config.json updated
+local cfg_active
+cfg_active=$(JSON_DATA="$(cat "$INT_DATA/config.json")" osascript -l JavaScript -e '
+  function run() {
+    var data = JSON.parse($.NSProcessInfo.processInfo.environment.objectForKey("JSON_DATA").js);
+    return data.active_list;
+  }
+' 2>/dev/null)
+assert_eq "CLI switch updated config" "work" "$cfg_active"
+
+# Test 18: todo list switch nonexistent returns error
+local noswitch_out
+noswitch_out="$(zsh "$TD_BIN" list switch nonexistent 2>&1)"
+local noswitch_exit=$?
+assert_eq "CLI switch nonexistent exits 1" "1" "$noswitch_exit"
+assert_contains "CLI switch nonexistent error" "does not exist" "$noswitch_out"
+
+# Test 19: todo add after switching adds to work list, not default
+zsh "$TD_BIN" add "task in work list" >/dev/null 2>&1
+local work_tasks
+work_tasks="$(cat "$INT_DATA/lists/work/tasks.json")"
+assert_contains "CLI add goes to active list" "task in work list" "$work_tasks"
+local default_tasks
+default_tasks="$(cat "$INT_DATA/lists/default/tasks.json")"
+local default_has_work_task=0
+[[ "$default_tasks" == *"task in work list"* ]] && default_has_work_task=1
+assert_eq "CLI add not in default list" "0" "$default_has_work_task"
+
+# Test 20: todo list output contains active marker
+local list_out
+list_out="$(zsh "$TD_BIN" list 2>&1)"
+assert_contains "CLI list shows active marker" "* work (active)" "$list_out"
+assert_contains "CLI list shows default" "default" "$list_out"
+
+# Test 21: todo list shows task counts
+assert_contains "CLI list shows task count for work" "1 tasks" "$list_out"
+assert_contains "CLI list shows task count for default" "0 tasks" "$list_out"
+
+# Test 22: Cross-list isolation via CLI
+zsh "$TD_BIN" list switch default >/dev/null 2>&1
+local ls_default
+ls_default="$(zsh "$TD_BIN" ls 2>&1)"
+local has_work_task=0
+[[ "$ls_default" == *"task in work list"* ]] && has_work_task=1
+assert_eq "CLI cross-list isolation: work task not in default ls" "0" "$has_work_task"
+
+unset TODOLIST_DATA
+
+# ============================================================
 # Summary
 # ============================================================
 

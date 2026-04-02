@@ -15,6 +15,9 @@ Commands:
   done <id>                  Mark task as completed
   move <id> <status>         Move task to a status (todo, doing, done)
   priority <id> <value>      Set priority (alta, media, baixa)
+  list                       List all lists
+  list create <name>         Create a new list
+  list switch <name>         Switch active list
   help                       Show this help message
   version                    Show version
 

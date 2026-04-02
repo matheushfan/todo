@@ -1,0 +1,82 @@
+# td-list - manage lists (create, switch, show)
+# Autoloaded: file body = function body
+
+_td_storage_init
+
+_list_show() {
+  local active
+  active="$(_td_storage_active_list)"
+  local lists_dir="$TD_DATA/lists"
+
+  local found=0
+  for dir in "$lists_dir"/*(N/); do
+    found=1
+    local name="${dir:t}"
+    local count=0
+    if [[ -f "$dir/tasks.json" ]]; then
+      count=$(_td_storage_read "$dir/tasks.json" '.tasks.length' 2>/dev/null)
+      [[ -z "$count" ]] && count=0
+    fi
+    if [[ "$name" == "$active" ]]; then
+      printf "* %s (active) - %s tasks\n" "$name" "$count"
+    else
+      printf "  %s - %s tasks\n" "$name" "$count"
+    fi
+  done
+
+  if (( found == 0 )); then
+    _td_success "No lists yet. Run 'todo list create <name>' to create one."
+  fi
+}
+
+_list_create() {
+  local name="$1"
+  [[ -z "$name" ]] && { _td_error "Usage: todo list create <name>"; return 1; }
+
+  if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    _td_error "Invalid list name '$name'. Use letters, numbers, hyphens, underscores only."
+    return 1
+  fi
+
+  local list_dir="$TD_DATA/lists/$name"
+  [[ -d "$list_dir" ]] && { _td_error "List '$name' already exists"; return 1; }
+
+  mkdir -p "$list_dir" || return 1
+  printf '{"name":"%s","statuses":["todo","doing","done"],"tasks":[]}\n' "$name" \
+    > "$list_dir/tasks.json" || return 1
+
+  _td_success "Created list '$name'"
+}
+
+_list_switch() {
+  local name="$1"
+  [[ -z "$name" ]] && { _td_error "Usage: todo list switch <name>"; return 1; }
+
+  local list_dir="$TD_DATA/lists/$name"
+  [[ -d "$list_dir" ]] || {
+    _td_error "List '$name' does not exist. Create it with 'todo list create $name'"
+    return 1
+  }
+
+  local config="$(_td_storage_config_path)"
+  export NEW_LIST="$name"
+  _td_storage_modify "$config" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    data.active_list = env.objectForKey("NEW_LIST").js;
+  '
+  local rc=$?
+  unset NEW_LIST
+
+  (( rc == 0 )) && _td_success "Switched to list '$name'"
+  return $rc
+}
+
+local subcmd="${1:-}"
+shift 2>/dev/null
+
+case "$subcmd" in
+  ""|ls)    _list_show ;;
+  create)   _list_create "$@" ;;
+  switch)   _list_switch "$@" ;;
+  *)        _td_error "Unknown list command '$subcmd'. Use: create, switch, ls"; return 1 ;;
+esac
