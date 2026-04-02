@@ -1,0 +1,19 @@
+# td-add - create a new task
+# Autoloaded: file body = function body
+
+local text="$*"
+
+[[ -z "$text" ]] && {
+  _td_error "Usage: todo add <title>"
+  return 1
+}
+
+_td_storage_init
+
+local tasks_file
+tasks_file="$(_td_storage_list_path)"
+
+local task_id
+task_id="$(_td_storage_add_task "$tasks_file" "$text")" || return 1
+
+_td_success "Created task ${task_id:0:8}"
