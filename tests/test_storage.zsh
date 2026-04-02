@@ -124,7 +124,7 @@ local task_read
 task_read="$(_td_storage_read "$add_file" '.tasks[0]')"
 assert_contains "add_task has text" '"text":"Buy groceries"' "$task_read"
 assert_contains "add_task has status" '"status":"todo"' "$task_read"
-assert_contains "add_task has priority" '"priority":"medium"' "$task_read"
+assert_contains "add_task has priority" '"priority":"media"' "$task_read"
 assert_contains "add_task has tags" '"tags":[]' "$task_read"
 assert_contains "add_task has created" '"created"' "$task_read"
 assert_contains "add_task has id" '"id"' "$task_read"
