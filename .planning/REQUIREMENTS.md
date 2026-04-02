@@ -27,7 +27,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **LIST-01**: User can create multiple named lists
 - [x] **LIST-02**: User can switch between lists with a single command
 - [x] **LIST-03**: System uses a default list when none is specified
-- [ ] **LIST-04**: User can define custom statuses per list (columns do kanban)
+- [x] **LIST-04**: User can define custom statuses per list (columns do kanban)
 
 ### Visualization
 
@@ -37,7 +37,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Tags
 
-- [ ] **TAG-01**: User can add one or more tags to a task
+- [x] **TAG-01**: User can add one or more tags to a task
 - [ ] **TAG-02**: User can filter tasks by status and priority
 
 ### Storage & Infrastructure
@@ -94,11 +94,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LIST-01 | Phase 5 | Complete |
 | LIST-02 | Phase 5 | Complete |
 | LIST-03 | Phase 5 | Complete |
-| LIST-04 | Phase 6 | Pending |
+| LIST-04 | Phase 6 | Complete |
 | VIEW-01 | Phase 7 | Pending |
 | VIEW-02 | Phase 8 | Pending |
 | VIEW-03 | Phase 8 | Pending |
-| TAG-01 | Phase 6 | Pending |
+| TAG-01 | Phase 6 | Complete |
 | TAG-02 | Phase 6 | Pending |
 | STOR-01 | Phase 2 | Complete |
 | STOR-02 | Phase 2 | Complete |

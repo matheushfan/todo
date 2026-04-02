@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-04-02T23:01:19.003Z"
+status: executing
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-04-02T23:15:33.362Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 8
   completed_phases: 5
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 8
+  completed_plans: 7
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-02)
 
 **Core value:** Gerenciar tasks direto no terminal de forma rapida e visual, sem sair do fluxo de trabalho.
-**Current focus:** Phase 05 — multi-list-management
+**Current focus:** Phase 06 — custom-statuses-tags
 
 ## Current Position
 
-Phase: 05 (multi-list-management) — EXECUTING
-Plan: 1 of 1
-Status: Phase complete — ready for verification
+Phase: 06 (custom-statuses-tags) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-04-02
 
 Progress: [░░░░░░░░░░] 0%
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P02 | 2min | 2 tasks | 4 files |
 | Phase 04 P01 | 2min | 2 tasks | 8 files |
 | Phase 05 P01 | 2min | 2 tasks | 4 files |
+| Phase 06 P01 | 2min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,9 @@ Recent decisions affecting current work:
 - [Phase 04]: td-done uses data.statuses[last] for dynamic done status (not hardcoded)
 - [Phase 05]: Subcommand dispatch pattern (create/switch/ls) in single td-list file
 - [Phase 05]: _td_storage_active_list reads config.json via JXA with default fallback
+- [Phase 06]: Inline JXA duplicate check for status/tag existence before mutation
+- [Phase 06]: TASK_TAGS env var (comma-separated) for passing tags from td-add to _td_storage_add_task
+- [Phase 06]: Tag add is idempotent (no error on duplicate, just no-op)
 
 ### Pending Todos
 
@@ -93,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-02T23:01:19.001Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-04-02T23:15:33.359Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None

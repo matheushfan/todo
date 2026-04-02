@@ -99,7 +99,7 @@ Plans:
   4. User can filter displayed tasks by status and priority
 **Plans:** 2 plans
 Plans:
-- [ ] 06-01-PLAN.md -- td-status command (add/rm/ls), td-tag command (add/rm), td-add -t flag, tests
+- [x] 06-01-PLAN.md -- td-status command (add/rm/ls), td-tag command (add/rm), td-add -t flag, tests
 - [ ] 06-02-PLAN.md -- td-ls filter flags (--status/--priority), help text update, full suite validation
 
 ### Phase 7: Colored Output & List View
