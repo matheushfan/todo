@@ -13,13 +13,13 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **TASK-02**: User can edit the title of an existing task
 - [x] **TASK-03**: User can remove a task permanently
 - [x] **TASK-04**: User can list all tasks in the current list with formatted output
-- [ ] **TASK-05**: User can mark a task as completed (move to final status)
-- [ ] **TASK-06**: User can move a task to any status defined in the list
+- [x] **TASK-05**: User can mark a task as completed (move to final status)
+- [x] **TASK-06**: User can move a task to any status defined in the list
 - [ ] **TASK-07**: User can perform bulk operations on multiple tasks at once
 
 ### Priorities
 
-- [ ] **PRIO-01**: User can assign priority (alta/média/baixa) when creating or editing a task
+- [x] **PRIO-01**: User can assign priority (alta/média/baixa) when creating or editing a task
 - [ ] **PRIO-02**: Tasks display with color-coded priorities (vermelho/amarelo/verde)
 
 ### Multi-List
@@ -86,10 +86,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TASK-02 | Phase 3 | Complete |
 | TASK-03 | Phase 3 | Complete |
 | TASK-04 | Phase 3 | Complete |
-| TASK-05 | Phase 4 | Pending |
-| TASK-06 | Phase 4 | Pending |
+| TASK-05 | Phase 4 | Complete |
+| TASK-06 | Phase 4 | Complete |
 | TASK-07 | Phase 8 | Pending |
-| PRIO-01 | Phase 4 | Pending |
+| PRIO-01 | Phase 4 | Complete |
 | PRIO-02 | Phase 7 | Pending |
 | LIST-01 | Phase 5 | Pending |
 | LIST-02 | Phase 5 | Pending |

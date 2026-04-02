@@ -71,7 +71,9 @@ Plans:
   1. User can mark a task as completed (moves to final status)
   2. User can move a task to any status defined in the current list
   3. User can assign priority (alta/media/baixa) when creating or editing a task
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [x] 04-01-PLAN.md -- td-done, td-move, td-priority commands, td-add -p flag, integration tests
 
 ### Phase 5: Multi-List Management
 **Goal**: Users can organize work across multiple independent lists
@@ -126,7 +128,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 1. Project Scaffolding & CLI Dispatch | 0/1 | Planning | - |
 | 2. Storage Engine | 0/1 | Planning | - |
 | 3. Core Task CRUD | 0/2 | Not started | - |
-| 4. Task Workflow | 0/TBD | Not started | - |
+| 4. Task Workflow | 0/1 | Not started | - |
 | 5. Multi-List Management | 0/TBD | Not started | - |
 | 6. Custom Statuses & Tags | 0/TBD | Not started | - |
 | 7. Colored Output & List View | 0/TBD | Not started | - |
