@@ -97,7 +97,10 @@ Plans:
   2. Custom statuses define the columns available for task movement
   3. User can add one or more free-form tags to any task
   4. User can filter displayed tasks by status and priority
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 06-01-PLAN.md -- td-status command (add/rm/ls), td-tag command (add/rm), td-add -t flag, tests
+- [ ] 06-02-PLAN.md -- td-ls filter flags (--status/--priority), help text update, full suite validation
 
 ### Phase 7: Colored Output & List View
 **Goal**: Task display uses color coding for visual scanning
@@ -132,6 +135,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8
 | 3. Core Task CRUD | 0/2 | Not started | - |
 | 4. Task Workflow | 0/1 | Not started | - |
 | 5. Multi-List Management | 0/1 | Not started | - |
-| 6. Custom Statuses & Tags | 0/TBD | Not started | - |
+| 6. Custom Statuses & Tags | 0/2 | Not started | - |
 | 7. Colored Output & List View | 0/TBD | Not started | - |
 | 8. Kanban View & Bulk Operations | 0/TBD | Not started | - |

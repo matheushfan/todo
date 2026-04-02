@@ -1,0 +1,123 @@
+# td-status - manage custom statuses for current list
+# Autoloaded: file body = function body
+
+_td_storage_init
+
+local tasks_file
+tasks_file="$(_td_storage_list_path)"
+
+_status_add() {
+  local name="$1"
+  [[ -z "$name" ]] && {
+    _td_error "Usage: todo status add <name>"
+    return 1
+  }
+
+  if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    _td_error "Invalid status name '$name'. Use letters, numbers, hyphens, underscores only."
+    return 1
+  fi
+
+  local statuses_json
+  statuses_json="$(_td_storage_read "$tasks_file" '.statuses')" || return 1
+
+  local exists
+  exists=$(NEW_STATUS="$name" STATUSES="$statuses_json" osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var statuses = JSON.parse(env.objectForKey("STATUSES").js);
+      var s = env.objectForKey("NEW_STATUS").js;
+      return statuses.indexOf(s) >= 0 ? "yes" : "no";
+    }
+  ' 2>/dev/null)
+
+  [[ "$exists" == "yes" ]] && {
+    _td_error "Status '$name' already exists"
+    return 1
+  }
+
+  export NEW_STATUS="$name"
+  _td_storage_modify "$tasks_file" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var s = env.objectForKey("NEW_STATUS").js;
+    data.statuses.push(s);
+  '
+  local rc=$?
+  unset NEW_STATUS
+
+  (( rc == 0 )) && _td_success "Added status '$name'"
+  return $rc
+}
+
+_status_rm() {
+  local name="$1"
+  [[ -z "$name" ]] && {
+    _td_error "Usage: todo status rm <name>"
+    return 1
+  }
+
+  local check
+  check=$(REMOVE_STATUS="$name" JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+      var s = env.objectForKey("REMOVE_STATUS").js;
+      if (data.statuses.indexOf(s) === -1) return "ERROR:not_found";
+      if (data.statuses.length <= 1) return "ERROR:last_status";
+      var count = data.tasks.filter(function(t) { return t.status === s; }).length;
+      if (count > 0) return "ERROR:has_tasks:" + count;
+      return "OK";
+    }
+  ' 2>/dev/null)
+
+  case "$check" in
+    ERROR:not_found)
+      _td_error "Status '$name' not found"
+      return 1 ;;
+    ERROR:last_status)
+      _td_error "Cannot remove last status"
+      return 1 ;;
+    ERROR:has_tasks:*)
+      local count="${check##*:}"
+      _td_error "Cannot remove status '$name': $count task(s) still using it"
+      return 1 ;;
+  esac
+
+  export REMOVE_STATUS="$name"
+  _td_storage_modify "$tasks_file" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var s = env.objectForKey("REMOVE_STATUS").js;
+    data.statuses = data.statuses.filter(function(st) { return st !== s; });
+  '
+  local rc=$?
+  unset REMOVE_STATUS
+
+  (( rc == 0 )) && _td_success "Removed status '$name'"
+  return $rc
+}
+
+_status_ls() {
+  local statuses_json
+  statuses_json="$(_td_storage_read "$tasks_file" '.statuses')" || return 1
+
+  local lines
+  lines=$(STATUSES="$statuses_json" osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var statuses = JSON.parse(env.objectForKey("STATUSES").js);
+      return statuses.join("\n");
+    }
+  ' 2>/dev/null)
+
+  printf '%s\n' "$lines"
+}
+
+local subcmd="${1:-}"
+shift 2>/dev/null
+
+case "$subcmd" in
+  ""|ls)    _status_ls ;;
+  add)      _status_add "$@" ;;
+  rm)       _status_rm "$@" ;;
+  *)        _td_error "Unknown status command '$subcmd'. Use: add, rm, ls"; return 1 ;;
+esac
