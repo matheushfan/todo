@@ -15,7 +15,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **TASK-04**: User can list all tasks in the current list with formatted output
 - [x] **TASK-05**: User can mark a task as completed (move to final status)
 - [x] **TASK-06**: User can move a task to any status defined in the list
-- [ ] **TASK-07**: User can perform bulk operations on multiple tasks at once
+- [x] **TASK-07**: User can perform bulk operations on multiple tasks at once
 
 ### Priorities
 
@@ -88,7 +88,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TASK-04 | Phase 3 | Complete |
 | TASK-05 | Phase 4 | Complete |
 | TASK-06 | Phase 4 | Complete |
-| TASK-07 | Phase 8 | Pending |
+| TASK-07 | Phase 8 | Complete |
 | PRIO-01 | Phase 4 | Complete |
 | PRIO-02 | Phase 7 | Complete |
 | LIST-01 | Phase 5 | Complete |
