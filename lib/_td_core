@@ -1,0 +1,17 @@
+# _td_core - shared utilities loaded by entry point
+# This file body becomes the function body via autoload
+
+# Error output helper
+_td_error() {
+  printf "todo: %s\n" "$1" >&2
+}
+
+# Success output helper
+_td_success() {
+  printf "%s\n" "$1"
+}
+
+# Version helper
+_td_version_string() {
+  printf "todo v%s\n" "$TD_VERSION"
+}

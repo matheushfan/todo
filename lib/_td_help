@@ -1,0 +1,16 @@
+# _td_help - help text generation library
+# This file body becomes the function body via autoload
+
+_td_show_help() {
+  cat <<'HELP'
+todo - Task manager for the terminal
+
+Usage: todo <command> [options]
+
+Commands:
+  help      Show this help message
+  version   Show version
+
+Run 'todo help <command>' for command-specific help.
+HELP
+}

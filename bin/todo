@@ -1,0 +1,34 @@
+#!/usr/bin/env zsh
+# todo - CLI task manager
+
+# Capture script path before entering function ($0 becomes function name inside main)
+typeset -g _TD_SCRIPT_DIR="${0:A:h}"
+
+main() {
+  local td_root="$_TD_SCRIPT_DIR/.."
+
+  # Globals (intentional, used by all commands)
+  typeset -g TD_ROOT="$td_root"
+  typeset -g TD_VERSION="0.1.0"
+  typeset -g TD_DATA="${TODOLIST_DATA:-$HOME/.todolist}"
+
+  # Set function search path (project dirs first)
+  fpath=("$TD_ROOT/lib" "$TD_ROOT/commands" $fpath)
+
+  # Load core utilities (needed by all paths)
+  autoload -Uz _td_core && _td_core
+
+  # Dispatch
+  local cmd="${1:-help}"
+  shift 2>/dev/null
+
+  local func="td-${cmd}"
+  if autoload -Uz +X "$func" 2>/dev/null; then
+    "$func" "$@"
+  else
+    _td_error "'$cmd' is not a command. See 'todo help'."
+    return 1
+  fi
+}
+
+main "$@"

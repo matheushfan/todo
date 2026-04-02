@@ -1,0 +1,5 @@
+# td-help - show usage information
+# Autoloaded: file body = function body
+
+autoload -Uz _td_help && _td_help
+_td_show_help
