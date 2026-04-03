@@ -12,6 +12,9 @@ typeset -ga _TD_UI_WINDOWS=()
 typeset -g _TD_UI_SEL_COL=1
 typeset -g _TD_UI_SEL_ROW=1
 
+# Tasks file path (global for action functions)
+typeset -g _TD_UI_TASKS_FILE=""
+
 # Load task data via single JXA call into zsh arrays
 # Usage: _td_interactive_load_data <tasks_file>
 _td_interactive_load_data() {
@@ -199,6 +202,147 @@ _td_interactive_nav_left() {
   # No column with tasks found; stay put
 }
 
+# Get selected task's UUID (first tab-separated field)
+_td_interactive_get_selected_id() {
+  local task_line="${_TD_UI_COL_TASKS[$_TD_UI_SEL_COL,$_TD_UI_SEL_ROW]}"
+  [[ -z "$task_line" ]] && return 1
+  printf '%s' "${task_line%%	*}"
+}
+
+# Get selected task's ref URL (5th tab-separated field)
+_td_interactive_get_selected_ref() {
+  local task_line="${_TD_UI_COL_TASKS[$_TD_UI_SEL_COL,$_TD_UI_SEL_ROW]}"
+  [[ -z "$task_line" ]] && return 1
+  local rest="${task_line#*	}"   # skip id
+  rest="${rest#*	}"               # skip priority
+  rest="${rest#*	}"               # skip tags
+  rest="${rest#*	}"               # skip text
+  printf '%s' "$rest"              # ref URL
+}
+
+# Show a brief message in the status bar
+_td_interactive_status_msg() {
+  local msg="$1"
+  zcurses clear statusbar
+  zcurses attr statusbar reverse
+  local padded="${msg}${(l:$((COLUMNS - ${#msg})):: :)}"
+  zcurses move statusbar 0 0
+  zcurses string statusbar "$padded"
+  zcurses attr statusbar -reverse
+  zcurses refresh statusbar
+}
+
+# Adjust selection after data mutation (clamp row, find non-empty column)
+_td_interactive_adjust_selection() {
+  local count=${_TD_UI_COL_COUNTS[$_TD_UI_SEL_COL]:-0}
+  if (( count == 0 )); then
+    _TD_UI_SEL_ROW=1
+    _td_interactive_nav_right
+  elif (( _TD_UI_SEL_ROW > count )); then
+    _TD_UI_SEL_ROW=$count
+  fi
+}
+
+# Action: cycle selected task to next status column
+_td_interactive_action_status() {
+  local task_id
+  task_id="$(_td_interactive_get_selected_id)" || {
+    _td_interactive_status_msg " No task selected "
+    return
+  }
+
+  local next_col=$(( _TD_UI_SEL_COL % ${#_TD_UI_STATUSES[@]} + 1 ))
+  local new_status="${_TD_UI_STATUSES[$next_col]}"
+
+  export TASK_ID="$task_id" NEW_STATUS="$new_status"
+  _td_storage_modify "$_TD_UI_TASKS_FILE" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var tid = env.objectForKey("TASK_ID").js;
+    var ns = env.objectForKey("NEW_STATUS").js;
+    var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
+    if (idx >= 0) { data.tasks[idx].status = ns; data.tasks[idx].updated = new Date().toISOString(); }
+  '
+  unset TASK_ID NEW_STATUS
+
+  _td_interactive_load_data "$_TD_UI_TASKS_FILE"
+
+  # Follow the task to its new column
+  _TD_UI_SEL_COL=$next_col
+  # Find the task in the new column
+  local r found=0
+  for (( r=1; r<=${_TD_UI_COL_COUNTS[$next_col]:-0}; r++ )); do
+    local line="${_TD_UI_COL_TASKS[$next_col,$r]}"
+    if [[ "${line%%	*}" == "$task_id" ]]; then
+      _TD_UI_SEL_ROW=$r
+      found=1
+      break
+    fi
+  done
+  if (( ! found )); then
+    _td_interactive_adjust_selection
+  fi
+
+  _td_interactive_status_msg " Moved to ${new_status} "
+}
+
+# Action: mark selected task as done (last status)
+_td_interactive_action_done() {
+  local task_id
+  task_id="$(_td_interactive_get_selected_id)" || {
+    _td_interactive_status_msg " No task selected "
+    return
+  }
+
+  export TASK_ID="$task_id"
+  _td_storage_modify "$_TD_UI_TASKS_FILE" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var tid = env.objectForKey("TASK_ID").js;
+    var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
+    if (idx >= 0) { data.tasks[idx].status = data.statuses[data.statuses.length - 1]; data.tasks[idx].updated = new Date().toISOString(); }
+  '
+  unset TASK_ID
+
+  _td_interactive_load_data "$_TD_UI_TASKS_FILE"
+  _td_interactive_adjust_selection
+
+  _td_interactive_status_msg " Marked done "
+}
+
+# Action: delete selected task (no confirmation)
+_td_interactive_action_delete() {
+  local task_id
+  task_id="$(_td_interactive_get_selected_id)" || {
+    _td_interactive_status_msg " No task selected "
+    return
+  }
+
+  export TASK_ID="$task_id"
+  _td_storage_modify "$_TD_UI_TASKS_FILE" '
+    var tid = $.NSProcessInfo.processInfo.environment.objectForKey("TASK_ID").js;
+    data.tasks = data.tasks.filter(function(t) { return t.id !== tid; });
+  '
+  unset TASK_ID
+
+  _td_interactive_load_data "$_TD_UI_TASKS_FILE"
+  _td_interactive_adjust_selection
+
+  _td_interactive_status_msg " Task deleted "
+}
+
+# Action: open selected task's ref URL in browser
+_td_interactive_action_open() {
+  local ref_url
+  ref_url="$(_td_interactive_get_selected_ref)"
+
+  if [[ -z "$ref_url" ]]; then
+    _td_interactive_status_msg " No ref URL "
+    return
+  fi
+
+  open "$ref_url"
+  _td_interactive_status_msg " Opened ${ref_url} "
+}
+
 # Render the kanban board in zcurses windows
 # Usage: _td_interactive_render <list_name>
 _td_interactive_render() {
@@ -281,9 +425,9 @@ _td_interactive_render() {
         # Priority indicator (no color, just the char)
         pri_char=" "
         case "$cell_pri" in
-          alta)  pri_char="!" ;;
-          media) pri_char="~" ;;
-          baixa) pri_char="." ;;
+          high)   pri_char="!" ;;
+          medium) pri_char="~" ;;
+          low)    pri_char="." ;;
         esac
 
         zcurses move "col${i}" $task_row 1
@@ -308,15 +452,15 @@ _td_interactive_render() {
         # Non-selected task: render with per-field colors as before
         pri_char=" "
         case "$cell_pri" in
-          alta)
+          high)
             pri_char="!"
             zcurses attr "col${i}" +bold red/black
             ;;
-          media)
+          medium)
             pri_char="~"
             zcurses attr "col${i}" +bold yellow/black
             ;;
-          baixa)
+          low)
             pri_char="."
             zcurses attr "col${i}" green/black
             ;;
@@ -401,6 +545,7 @@ _td_interactive_run() {
   tasks_file="$(_td_storage_list_path)" || return 1
   list_name="$(_td_storage_active_list)"
 
+  _TD_UI_TASKS_FILE="$tasks_file"
   _td_interactive_load_data "$tasks_file" || return 1
   _td_interactive_init_selection
 
@@ -434,7 +579,10 @@ _td_interactive_run() {
           k|UP)    _td_interactive_nav_up; _td_interactive_render "$list_name" ;;
           l|RIGHT) _td_interactive_nav_right; _td_interactive_render "$list_name" ;;
           h|LEFT)  _td_interactive_nav_left; _td_interactive_render "$list_name" ;;
-          # s/d/x/o handled in Plan 02
+          s) _td_interactive_action_status; _td_interactive_render "$list_name" ;;
+          d) _td_interactive_action_done; _td_interactive_render "$list_name" ;;
+          x) _td_interactive_action_delete; _td_interactive_render "$list_name" ;;
+          o) _td_interactive_action_open ;;
         esac
       fi
       # Timeout branch: check resize flag (Phase 14 will fully implement)
