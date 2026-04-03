@@ -21,6 +21,9 @@ typeset -g _TD_UI_NEED_REDRAW=0
 # List name (global for resize handler access)
 typeset -g _TD_UI_LIST_NAME=""
 
+# Help overlay state
+typeset -g _TD_UI_HELP_VISIBLE=0
+
 # Load task data via single JXA call into zsh arrays
 # Usage: _td_interactive_load_data <tasks_file>
 _td_interactive_load_data() {
@@ -251,6 +254,7 @@ _td_interactive_adjust_selection() {
 
 # Handle terminal resize: destroy windows, recreate, re-render
 _td_interactive_handle_resize() {
+  _TD_UI_HELP_VISIBLE=0
   _td_interactive_cleanup_windows
   zcurses clear stdscr redraw
   zcurses refresh stdscr
@@ -258,6 +262,102 @@ _td_interactive_handle_resize() {
   _td_interactive_render "$_TD_UI_LIST_NAME"
   _td_interactive_adjust_selection
   _TD_UI_NEED_REDRAW=0
+}
+
+# Show help overlay window with all keybindings
+_td_interactive_show_help() {
+  local help_w=$(( COLUMNS - 4 ))
+  (( help_w > 50 )) && help_w=50
+  local help_h=$(( LINES - 4 ))
+  (( help_h > 18 )) && help_h=18
+
+  local help_y=$(( (LINES - help_h) / 2 ))
+  local help_x=$(( (COLUMNS - help_w) / 2 ))
+
+  zcurses addwin helpwin $help_h $help_w $help_y $help_x
+  _TD_UI_WINDOWS+=(helpwin)
+
+  zcurses clear helpwin
+  zcurses border helpwin
+
+  # Title centered on row 1
+  local title="Help"
+  local title_x=$(( (help_w - ${#title}) / 2 ))
+  zcurses attr helpwin +bold
+  zcurses move helpwin 1 $title_x
+  zcurses string helpwin "$title"
+  zcurses attr helpwin -bold
+
+  # Keybinding content starting at row 3
+  local row=3 inner_w=$(( help_w - 4 ))
+
+  # Navigation section
+  zcurses attr helpwin +bold
+  zcurses move helpwin $row 2
+  zcurses string helpwin "Navigation"
+  zcurses attr helpwin -bold
+  (( row++ ))
+
+  zcurses move helpwin $row 4; zcurses string helpwin "j / Down     Move down"
+  (( row++ ))
+  zcurses move helpwin $row 4; zcurses string helpwin "k / Up       Move up"
+  (( row++ ))
+  zcurses move helpwin $row 4; zcurses string helpwin "h / Left     Previous column"
+  (( row++ ))
+  zcurses move helpwin $row 4; zcurses string helpwin "l / Right    Next column"
+  (( row++ ))
+  (( row++ ))
+
+  # Actions section
+  zcurses attr helpwin +bold
+  zcurses move helpwin $row 2
+  zcurses string helpwin "Actions"
+  zcurses attr helpwin -bold
+  (( row++ ))
+
+  zcurses move helpwin $row 4; zcurses string helpwin "s            Cycle status"
+  (( row++ ))
+  zcurses move helpwin $row 4; zcurses string helpwin "d            Mark done"
+  (( row++ ))
+  zcurses move helpwin $row 4; zcurses string helpwin "x            Delete task"
+  (( row++ ))
+  zcurses move helpwin $row 4; zcurses string helpwin "o            Open ref URL"
+  (( row++ ))
+
+  # General section (only if space)
+  if (( row + 3 < help_h - 1 )); then
+    (( row++ ))
+    zcurses attr helpwin +bold
+    zcurses move helpwin $row 2
+    zcurses string helpwin "General"
+    zcurses attr helpwin -bold
+    (( row++ ))
+
+    zcurses move helpwin $row 4; zcurses string helpwin "?            Toggle this help"
+    (( row++ ))
+    zcurses move helpwin $row 4; zcurses string helpwin "q            Quit"
+  fi
+
+  # "Press any key to close" at bottom
+  local close_msg="Press any key to close"
+  local close_x=$(( (help_w - ${#close_msg}) / 2 ))
+  zcurses attr helpwin dim
+  zcurses move helpwin $(( help_h - 2 )) $close_x
+  zcurses string helpwin "$close_msg"
+  zcurses attr helpwin -dim
+
+  zcurses refresh helpwin
+  _TD_UI_HELP_VISIBLE=1
+}
+
+# Hide help overlay and re-render board
+_td_interactive_hide_help() {
+  if [[ -n "${_TD_UI_WINDOWS[(r)helpwin]}" ]]; then
+    zcurses delwin helpwin
+    _TD_UI_WINDOWS=(${_TD_UI_WINDOWS:#helpwin})
+  fi
+  _TD_UI_HELP_VISIBLE=0
+  _td_interactive_render "$_TD_UI_LIST_NAME"
 }
 
 # Action: cycle selected task to next status column
@@ -525,7 +625,7 @@ _td_interactive_render() {
   # --- Render status bar ---
   zcurses clear statusbar
   zcurses attr statusbar reverse
-  local bar_text=" ${list_name} | ${_TD_UI_TOTAL_TASKS} tasks | j/k:move h/l:col s:status d:done x:del o:open q:quit "
+  local bar_text=" ${list_name} | ${_TD_UI_TOTAL_TASKS} tasks | j/k:move h/l:col s:status d:done x:del o:open ?:help q:quit "
   # Pad to full width
   local bar_pad=$(( COLUMNS - ${#bar_text} ))
   (( bar_pad < 0 )) && bar_pad=0
@@ -595,6 +695,12 @@ _td_interactive_run() {
 
     while true; do
       if zcurses input stdscr key kkey; then
+        # Dismiss help overlay on any key (except ? which toggles)
+        if (( _TD_UI_HELP_VISIBLE )) && [[ "$key$kkey" != '?' ]]; then
+          _td_interactive_hide_help
+          continue
+        fi
+
         case $key$kkey in
           q) break ;;
           j|DOWN)  _td_interactive_nav_down; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
@@ -605,6 +711,13 @@ _td_interactive_run() {
           d) _td_interactive_action_done; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
           x) _td_interactive_action_delete; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
           o) _td_interactive_action_open ;;
+          '?')
+            if (( _TD_UI_HELP_VISIBLE )); then
+              _td_interactive_hide_help
+            else
+              _td_interactive_show_help
+            fi
+            ;;
         esac
       fi
       # Timeout branch: check resize flag
