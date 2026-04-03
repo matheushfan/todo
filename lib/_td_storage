@@ -187,3 +187,9 @@ _td_storage_list_path() {
 _td_storage_config_path() {
   printf '%s/config.json' "$TD_DATA"
 }
+
+# Get path to archive file for a list
+_td_storage_archive_path() {
+  local list="${1:-$(_td_storage_active_list)}"
+  printf '%s/lists/%s/archive.json' "$TD_DATA" "$list"
+}
