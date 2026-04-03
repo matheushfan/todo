@@ -8,44 +8,83 @@ CLI de gerenciamento de tasks para o terminal, escrito 100% em shell/zsh puro se
 
 Gerenciar tasks direto no terminal de forma rápida e visual, sem sair do fluxo de trabalho.
 
+## Current Milestone: v1.1 Interactive Experience
+
+**Goal:** Transformar o td de comandos avulsos para uma experiência interativa e visual no terminal, com detail view, archive e UI refinada.
+
+**Target features:**
+- Modo interativo persistente (board/list com refresh, zsh read/zle)
+- Detail view de task (todos os campos, metadata, refs)
+- Campo URL/ref genérico por task (Linear, GitHub, qualquer link)
+- Modo checkbox (todo/done) para listas simples
+- Comando td summary/pending (opt-in para .zshrc)
+- Archive de tasks concluídas (mover sem deletar, consulta posterior)
+- UI/UX refinada — navegação por teclas, ciclar status, layout polido
+- Melhorias baseadas em produtos validados (kanban/todo best practices)
+
+## Current State
+
+**Shipped:** v1.0 MVP (2026-04-03)
+**LOC:** ~2,636 zsh | **Commits:** 43 | **Files:** 55
+
+Fully functional CLI with:
+- CRUD completo (add, edit, rm, ls)
+- Multi-list management with independent namespaces
+- Custom statuses per list
+- Priority system (high/medium/low) with color coding
+- Free-form tags with filtering
+- Kanban board view with responsive layout
+- Bulk operations (done/move/rm)
+- Zero external dependencies — pure zsh + macOS built-ins
+
 ## Requirements
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ Criar, editar e remover tasks via CLI — v1.0
+- ✓ Múltiplas listas com fácil switch entre elas — v1.0
+- ✓ Status customizáveis por lista — v1.0
+- ✓ Visualização kanban inline (colunas lado a lado) — v1.0
+- ✓ Prioridades high/medium/low com cores (red/yellow/green) — v1.0
+- ✓ Tags/labels livres nas tasks — v1.0
+- ✓ Filtro por status e prioridade — v1.0
+- ✓ Storage centralizado em ~/.todolist/ com namespaces — v1.0
+- ✓ Zero dependências externas — shell/zsh puro — v1.0
 
 ### Active
 
-- [ ] Criar, editar e remover tasks via CLI
-- [ ] Múltiplas listas com fácil switch entre elas
-- [ ] Status customizáveis por lista (o usuário define os status de cada lista)
-- [ ] Visualização kanban inline (colunas lado a lado no terminal)
-- [ ] Prioridades Alta/Média/Baixa com cores (vermelho/amarelo/verde)
-- [ ] Tags/labels livres nas tasks
-- [ ] Busca e filtro por status, prioridade, tag e texto
-- [ ] Storage centralizado em ~/.todolist/ com namespaces
-- [ ] Zero dependências externas — shell/zsh puro
+- [ ] Filtro por tag (SRCH-01)
+- [ ] Busca por texto livre em todos os campos (SRCH-02)
+- [ ] Filtro cross-list (SRCH-03)
+- [ ] Zsh tab completions para comandos, listas e tags (UX-01)
+- [ ] Help system com exemplos por comando (UX-02)
+- [ ] NO_COLOR env var support (UX-03)
+- [ ] Export/import de listas (UX-04)
 
 ### Out of Scope
 
-- Due dates / prazos — complexidade desnecessária pro v1, o foco é simplicidade
+- Due dates / prazos — complexidade desnecessária, o foco é simplicidade
 - Sincronização com serviços externos (Todoist, Linear, etc) — manter offline-first e simples
-- Interface TUI interativa (tipo ncurses) — o valor é nos comandos rápidos, não numa TUI
-- Plugin oh-my-zsh formal — CLI standalone é suficiente, aliases o usuário cria se quiser
+- Interface TUI via ncurses — usando zsh read/zle nativo em vez de ncurses externo
+- Plugin oh-my-zsh formal — CLI standalone é suficiente
+- Cross-platform (Linux/Windows) — macOS-only permite usar JXA e ferramentas BSD
+- Recurring tasks — over-engineering pro caso de uso
+- Time tracking — fora do escopo de task management simples
 
 ## Context
 
 - Usuário é desenvolvedor que vive no terminal e quer trackear tasks sem abrir outra ferramenta
 - Shell/zsh puro garante zero dependências e máxima portabilidade no macOS
-- Storage em JSON plano dentro de ~/.todolist/ — simples de parsear com ferramentas shell
+- Storage em JSON plano dentro de ~/.todolist/ — parseado via osascript JXA (built-in macOS)
 - Kanban inline no terminal é o diferencial visual — colunas alinhadas com ANSI colors
 - Cada lista é um namespace independente com seus próprios status customizados
 - Performance é prioridade — operações devem ser instantâneas
+- Tech stack: zsh 5.9+, osascript JXA para JSON, ANSI escape codes para cores, printf para alignment
 
 ## Constraints
 
 - **Linguagem**: Shell/Zsh puro — sem Python, Node, Go ou qualquer runtime externo
-- **Dependências**: Zero — apenas utilitários POSIX padrão (sed, awk, grep, etc)
+- **Dependências**: Zero — apenas utilitários POSIX padrão + macOS built-ins (osascript, uuidgen)
 - **Plataforma**: macOS primário (zsh como shell padrão)
 - **Storage**: JSON flat files em ~/.todolist/
 
@@ -53,10 +92,14 @@ Gerenciar tasks direto no terminal de forma rápida e visual, sem sair do fluxo 
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Shell/Zsh puro | Zero dependências, máxima portabilidade, performance instantânea | — Pending |
-| Storage centralizado ~/.todolist/ | Único lugar pra todas as listas, sem poluir diretórios de projeto | — Pending |
-| Status custom por lista | Flexibilidade — cada contexto tem seu fluxo diferente | — Pending |
-| JSON como formato de dados | Parseable com ferramentas shell, human-readable | — Pending |
+| Shell/Zsh puro | Zero dependências, máxima portabilidade, performance instantânea | ✓ Good — startup instantâneo, sem overhead |
+| osascript JXA para JSON | Full JSON.parse/stringify built-in no macOS, 100% array support | ✓ Good — resolveu limitações de sed/awk |
+| Storage centralizado ~/.todolist/ | Único lugar pra todas as listas, sem poluir diretórios de projeto | ✓ Good |
+| Atomic write-to-temp + mv | Previne corrupção em crash/interrupt | ✓ Good |
+| zsh autoload/fpath | Cada comando em arquivo separado, carregado sob demanda | ✓ Good — modular e extensível |
+| Priority em inglês (high/medium/low) | Consistência com CLI em inglês | ✓ Good — renomeado de PT em quick task |
+| Single JXA call para kanban grouping | Agrupa tasks por status em uma chamada, evita N+1 | ✓ Good |
+| Truncar plain text antes de colorizar | Evita quebrar escape sequences ANSI | ✓ Good |
 
 ## Evolution
 
@@ -76,4 +119,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-02 after initialization*
+*Last updated: 2026-04-03 after v1.1 milestone start*
