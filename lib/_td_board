@@ -50,7 +50,8 @@ _td_board_render() {
         if (tasks.length === 0) return "";
         var lines = tasks.map(function(t) {
           var tagStr = t.tags && t.tags.length > 0 ? t.tags.join(",") : "";
-          return t.id.substring(0, 8) + "\t" + t.priority + "\t" + tagStr + "\t" + t.text;
+          var refInd = (t.ref && t.ref !== "") ? " \u2192" : "";
+          return t.id.substring(0, 8) + "\t" + t.priority + "\t" + tagStr + "\t" + t.text + refInd;
         });
         return lines.join("\n");
       });
@@ -226,7 +227,8 @@ _td_board_stacked() {
           if (t.priority === "alta") pri = "!";
           else if (t.priority === "media") pri = "~";
           else if (t.priority === "baixa") pri = ".";
-          return pri + " " + t.id.substring(0, 8) + " " + t.text;
+          var refInd = (t.ref && t.ref !== "") ? " \u2192" : "";
+          return pri + " " + t.id.substring(0, 8) + " " + t.text + refInd;
         });
         return lines.join("\n");
       });
