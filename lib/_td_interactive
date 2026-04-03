@@ -24,6 +24,12 @@ typeset -g _TD_UI_LIST_NAME=""
 # Help overlay state
 typeset -g _TD_UI_HELP_VISIBLE=0
 
+# Checkbox mode state
+typeset -g _TD_UI_CHECKBOX_MODE=0
+typeset -g _TD_UI_CHECKBOX_SEL=1
+typeset -g _TD_UI_CHECKBOX_COUNT=0
+typeset -ga _TD_UI_CHECKBOX_ITEMS=()
+
 # Load task data via single JXA call into zsh arrays
 # Usage: _td_interactive_load_data <tasks_file>
 _td_interactive_load_data() {
@@ -95,6 +101,177 @@ _td_interactive_load_data() {
   done
 }
 
+# Flatten all tasks into a single list for checkbox mode
+# Each entry: id\tpriority\ttags\ttext\tref\tstatus
+_td_interactive_flatten_for_checkbox() {
+  _TD_UI_CHECKBOX_ITEMS=()
+  _TD_UI_CHECKBOX_COUNT=0
+
+  local c r task_line status_name
+  # Unchecked first (first status), then checked (last status)
+  for (( c=1; c<=${#_TD_UI_STATUSES[@]}; c++ )); do
+    status_name="${_TD_UI_STATUSES[$c]}"
+    for (( r=1; r<=${_TD_UI_COL_COUNTS[$c]:-0}; r++ )); do
+      task_line="${_TD_UI_COL_TASKS[$c,$r]}"
+      [[ -z "$task_line" ]] && continue
+      _TD_UI_CHECKBOX_ITEMS+=("${task_line}	${status_name}")
+      (( _TD_UI_CHECKBOX_COUNT++ ))
+    done
+  done
+}
+
+# Render checkbox mode: flat list with [ ]/[x] indicators
+_td_interactive_render_checkbox() {
+  local last_status="${_TD_UI_STATUSES[-1]}"
+  local max_rows=$(( LINES - 4 ))  # header(1) + separator(1) + statusbar(1) + bottom margin(1)
+
+  # --- Render header ---
+  zcurses clear header
+  local header_text="${_TD_UI_LIST_NAME} [checkbox]"
+  local header_pad=$(( (COLUMNS - ${#header_text}) / 2 ))
+  (( header_pad < 0 )) && header_pad=0
+  zcurses attr header +bold cyan/black
+  zcurses move header 0 $header_pad
+  zcurses string header "$header_text"
+  zcurses attr header -bold white/black
+
+  # --- Render task list on stdscr ---
+  # Clear the body area (rows 1 to LINES-2)
+  local clear_row
+  for (( clear_row=1; clear_row <= LINES - 2; clear_row++ )); do
+    zcurses move stdscr $clear_row 0
+    zcurses string stdscr "${(l:$COLUMNS:: :)}"
+  done
+
+  # Separator line (row 1)
+  local sep_line="${(l:$COLUMNS::-:)}"
+  zcurses attr stdscr dim
+  zcurses move stdscr 1 0
+  zcurses string stdscr "$sep_line"
+  zcurses attr stdscr -dim white/black
+
+  # Render each task
+  local r task_line cell_id cell_pri cell_tags cell_text cell_ref cell_status rest
+  local checkbox pri_char is_selected display_text full_line line_pad
+  local max_text=$(( COLUMNS - 8 ))
+  (( max_text < 1 )) && max_text=1
+
+  for (( r=1; r<=_TD_UI_CHECKBOX_COUNT && r<=max_rows; r++ )); do
+    task_line="${_TD_UI_CHECKBOX_ITEMS[$r]}"
+    [[ -z "$task_line" ]] && continue
+
+    # Parse: id\tpriority\ttags\ttext\tref\tstatus
+    cell_id="${task_line%%	*}"
+    rest="${task_line#*	}"
+    cell_pri="${rest%%	*}"
+    rest="${rest#*	}"
+    cell_tags="${rest%%	*}"
+    rest="${rest#*	}"
+    cell_text="${rest%%	*}"
+    rest="${rest#*	}"
+    cell_ref="${rest%%	*}"
+    cell_status="${rest#*	}"
+
+    # Checkbox indicator
+    if [[ "$cell_status" == "$last_status" ]]; then
+      checkbox="[x]"
+    else
+      checkbox="[ ]"
+    fi
+
+    # Priority indicator
+    pri_char=" "
+    case "$cell_pri" in
+      high)   pri_char="!" ;;
+      medium) pri_char="~" ;;
+      low)    pri_char="." ;;
+    esac
+
+    # Truncate text
+    display_text="$cell_text"
+    if (( ${#display_text} > max_text )); then
+      display_text="${display_text:0:$((max_text - 1))}~"
+    fi
+
+    is_selected=0
+    (( r == _TD_UI_CHECKBOX_SEL )) && is_selected=1
+
+    local render_row=$(( r + 1 ))  # row 2+ (after header + separator)
+
+    if (( is_selected )); then
+      zcurses attr stdscr reverse
+      full_line="${pri_char} ${checkbox} ${display_text}"
+      line_pad=$(( COLUMNS - ${#full_line} ))
+      (( line_pad < 0 )) && line_pad=0
+      zcurses move stdscr $render_row 0
+      zcurses string stdscr "${full_line}${(l:$line_pad:: :)}"
+      zcurses attr stdscr -reverse white/black
+    else
+      zcurses move stdscr $render_row 0
+
+      # Priority color
+      case "$cell_pri" in
+        high)
+          zcurses attr stdscr +bold red/black
+          zcurses string stdscr "$pri_char"
+          zcurses attr stdscr -bold white/black
+          ;;
+        medium)
+          zcurses attr stdscr +bold yellow/black
+          zcurses string stdscr "$pri_char"
+          zcurses attr stdscr -bold white/black
+          ;;
+        low)
+          zcurses attr stdscr green/black
+          zcurses string stdscr "$pri_char"
+          zcurses attr stdscr white/black
+          ;;
+        *)
+          zcurses string stdscr "$pri_char"
+          ;;
+      esac
+
+      # Checkbox (dim if checked)
+      if [[ "$cell_status" == "$last_status" ]]; then
+        zcurses attr stdscr dim
+        zcurses string stdscr " ${checkbox} ${display_text}"
+        zcurses attr stdscr -dim white/black
+      else
+        zcurses string stdscr " ${checkbox} ${display_text}"
+      fi
+    fi
+  done
+
+  # Overflow indicator
+  if (( _TD_UI_CHECKBOX_COUNT > max_rows )); then
+    local overflow_msg="... +$(( _TD_UI_CHECKBOX_COUNT - max_rows )) more"
+    zcurses attr stdscr dim
+    zcurses move stdscr $(( max_rows + 2 )) 2
+    zcurses string stdscr "$overflow_msg"
+    zcurses attr stdscr -dim white/black
+  fi
+
+  # Empty list
+  if (( _TD_UI_CHECKBOX_COUNT == 0 )); then
+    zcurses attr stdscr dim
+    zcurses move stdscr 3 2
+    zcurses string stdscr "(no tasks)"
+    zcurses attr stdscr -dim white/black
+  fi
+
+  # --- Render status bar ---
+  zcurses clear statusbar
+  zcurses attr statusbar reverse
+  local bar_text=" ${_TD_UI_LIST_NAME} | ${_TD_UI_CHECKBOX_COUNT} tasks | j/k:move Space:toggle d:done x:del ?:help q:quit "
+  local bar_pad=$(( COLUMNS - ${#bar_text} ))
+  (( bar_pad < 0 )) && bar_pad=0
+  zcurses move statusbar 0 0
+  zcurses string statusbar "${bar_text}${(l:$bar_pad:: :)}"
+  zcurses attr statusbar -reverse
+
+  zcurses refresh stdscr header statusbar
+}
+
 # Create zcurses windows for layout
 _td_interactive_create_windows() {
   local num_cols=${#_TD_UI_STATUSES[@]}
@@ -106,26 +283,32 @@ _td_interactive_create_windows() {
   zcurses addwin header 1 $COLUMNS 0 0
   _TD_UI_WINDOWS+=(header)
 
-  # Column windows
-  col_height=$(( LINES - 2 ))  # header + statusbar
-  col_width=$(( (COLUMNS - 2) / num_cols ))
+  if (( _TD_UI_CHECKBOX_MODE )); then
+    # Checkbox mode: only header + statusbar, no column windows
+    zcurses addwin statusbar 1 $COLUMNS $(( LINES - 1 )) 0
+    _TD_UI_WINDOWS+=(statusbar)
+  else
+    # Kanban mode: column windows
+    col_height=$(( LINES - 2 ))  # header + statusbar
+    col_width=$(( (COLUMNS - 2) / num_cols ))
 
-  # Enforce minimum column width
-  if (( col_width < 15 )); then
-    col_width=15
+    # Enforce minimum column width
+    if (( col_width < 15 )); then
+      col_width=15
+    fi
+
+    local i
+    for (( i=1; i<=num_cols; i++ )); do
+      col_y=1
+      col_x=$(( (i - 1) * col_width ))
+      zcurses addwin "col${i}" $col_height $col_width $col_y $col_x
+      _TD_UI_WINDOWS+=("col${i}")
+    done
+
+    # Status bar window: last row, full width, height 1
+    zcurses addwin statusbar 1 $COLUMNS $(( LINES - 1 )) 0
+    _TD_UI_WINDOWS+=(statusbar)
   fi
-
-  local i
-  for (( i=1; i<=num_cols; i++ )); do
-    col_y=1
-    col_x=$(( (i - 1) * col_width ))
-    zcurses addwin "col${i}" $col_height $col_width $col_y $col_x
-    _TD_UI_WINDOWS+=("col${i}")
-  done
-
-  # Status bar window: last row, full width, height 1
-  zcurses addwin statusbar 1 $COLUMNS $(( LINES - 1 )) 0
-  _TD_UI_WINDOWS+=(statusbar)
 }
 
 # Cleanup all zcurses windows
@@ -136,14 +319,18 @@ _td_interactive_cleanup_windows() {
   done
 }
 
-# Initialize selection to first non-empty column
+# Initialize selection to first non-empty column (or first checkbox item)
 _td_interactive_init_selection() {
-  _TD_UI_SEL_COL=1
-  _TD_UI_SEL_ROW=1
+  if (( _TD_UI_CHECKBOX_MODE )); then
+    _TD_UI_CHECKBOX_SEL=1
+  else
+    _TD_UI_SEL_COL=1
+    _TD_UI_SEL_ROW=1
 
-  # If column 1 is empty, find first non-empty column
-  if (( ${_TD_UI_COL_COUNTS[1]:-0} == 0 )); then
-    _td_interactive_nav_right
+    # If column 1 is empty, find first non-empty column
+    if (( ${_TD_UI_COL_COUNTS[1]:-0} == 0 )); then
+      _td_interactive_nav_right
+    fi
   fi
 }
 
@@ -259,8 +446,18 @@ _td_interactive_handle_resize() {
   zcurses clear stdscr redraw
   zcurses refresh stdscr
   _td_interactive_create_windows
-  _td_interactive_render "$_TD_UI_LIST_NAME"
-  _td_interactive_adjust_selection
+  if (( _TD_UI_CHECKBOX_MODE )); then
+    # Clamp selection to visible rows
+    local max_rows=$(( LINES - 4 ))
+    if (( _TD_UI_CHECKBOX_SEL > _TD_UI_CHECKBOX_COUNT )); then
+      _TD_UI_CHECKBOX_SEL=$_TD_UI_CHECKBOX_COUNT
+    fi
+    (( _TD_UI_CHECKBOX_SEL < 1 )) && _TD_UI_CHECKBOX_SEL=1
+    _td_interactive_render_checkbox
+  else
+    _td_interactive_render "$_TD_UI_LIST_NAME"
+    _td_interactive_adjust_selection
+  fi
   _TD_UI_NEED_REDRAW=0
 }
 
@@ -302,10 +499,13 @@ _td_interactive_show_help() {
   (( row++ ))
   zcurses move helpwin $row 4; zcurses string helpwin "k / Up       Move up"
   (( row++ ))
-  zcurses move helpwin $row 4; zcurses string helpwin "h / Left     Previous column"
-  (( row++ ))
-  zcurses move helpwin $row 4; zcurses string helpwin "l / Right    Next column"
-  (( row++ ))
+
+  if (( ! _TD_UI_CHECKBOX_MODE )); then
+    zcurses move helpwin $row 4; zcurses string helpwin "h / Left     Previous column"
+    (( row++ ))
+    zcurses move helpwin $row 4; zcurses string helpwin "l / Right    Next column"
+    (( row++ ))
+  fi
   (( row++ ))
 
   # Actions section
@@ -315,14 +515,23 @@ _td_interactive_show_help() {
   zcurses attr helpwin -bold
   (( row++ ))
 
-  zcurses move helpwin $row 4; zcurses string helpwin "s            Cycle status"
-  (( row++ ))
-  zcurses move helpwin $row 4; zcurses string helpwin "d            Mark done"
-  (( row++ ))
-  zcurses move helpwin $row 4; zcurses string helpwin "x            Delete task"
-  (( row++ ))
-  zcurses move helpwin $row 4; zcurses string helpwin "o            Open ref URL"
-  (( row++ ))
+  if (( _TD_UI_CHECKBOX_MODE )); then
+    zcurses move helpwin $row 4; zcurses string helpwin "Space/Enter  Toggle checkbox"
+    (( row++ ))
+    zcurses move helpwin $row 4; zcurses string helpwin "d            Mark done (check)"
+    (( row++ ))
+    zcurses move helpwin $row 4; zcurses string helpwin "x            Delete task"
+    (( row++ ))
+  else
+    zcurses move helpwin $row 4; zcurses string helpwin "s            Cycle status"
+    (( row++ ))
+    zcurses move helpwin $row 4; zcurses string helpwin "d            Mark done"
+    (( row++ ))
+    zcurses move helpwin $row 4; zcurses string helpwin "x            Delete task"
+    (( row++ ))
+    zcurses move helpwin $row 4; zcurses string helpwin "o            Open ref URL"
+    (( row++ ))
+  fi
 
   # General section (only if space)
   if (( row + 3 < help_h - 1 )); then
@@ -357,7 +566,116 @@ _td_interactive_hide_help() {
     _TD_UI_WINDOWS=(${_TD_UI_WINDOWS:#helpwin})
   fi
   _TD_UI_HELP_VISIBLE=0
-  _td_interactive_render "$_TD_UI_LIST_NAME"
+  if (( _TD_UI_CHECKBOX_MODE )); then
+    _td_interactive_render_checkbox
+  else
+    _td_interactive_render "$_TD_UI_LIST_NAME"
+  fi
+}
+
+# Action: toggle checkbox (Space/Enter in checkbox mode)
+_td_interactive_action_toggle() {
+  (( _TD_UI_CHECKBOX_COUNT == 0 )) && return
+
+  local task_line="${_TD_UI_CHECKBOX_ITEMS[$_TD_UI_CHECKBOX_SEL]}"
+  [[ -z "$task_line" ]] && return
+
+  # Parse status (6th tab field)
+  local rest="${task_line#*	}"   # skip id
+  rest="${rest#*	}"               # skip priority
+  rest="${rest#*	}"               # skip tags
+  rest="${rest#*	}"               # skip text
+  rest="${rest#*	}"               # skip ref
+  local current_status="$rest"
+
+  local first_status="${_TD_UI_STATUSES[1]}"
+  local last_status="${_TD_UI_STATUSES[-1]}"
+  local new_status
+
+  if [[ "$current_status" == "$last_status" ]]; then
+    new_status="$first_status"
+  else
+    new_status="$last_status"
+  fi
+
+  local task_id="${task_line%%	*}"
+
+  export TASK_ID="$task_id" NEW_STATUS="$new_status"
+  _td_storage_modify "$_TD_UI_TASKS_FILE" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var tid = env.objectForKey("TASK_ID").js;
+    var ns = env.objectForKey("NEW_STATUS").js;
+    var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
+    if (idx >= 0) { data.tasks[idx].status = ns; data.tasks[idx].updated = new Date().toISOString(); }
+  '
+  unset TASK_ID NEW_STATUS
+
+  _td_interactive_load_data "$_TD_UI_TASKS_FILE"
+  _td_interactive_flatten_for_checkbox
+
+  # Clamp selection
+  if (( _TD_UI_CHECKBOX_SEL > _TD_UI_CHECKBOX_COUNT )); then
+    _TD_UI_CHECKBOX_SEL=$_TD_UI_CHECKBOX_COUNT
+  fi
+  (( _TD_UI_CHECKBOX_SEL < 1 )) && _TD_UI_CHECKBOX_SEL=1
+
+  _td_interactive_status_msg " Toggled "
+}
+
+# Action: mark selected checkbox task as done (checked)
+_td_interactive_action_checkbox_done() {
+  (( _TD_UI_CHECKBOX_COUNT == 0 )) && return
+
+  local task_line="${_TD_UI_CHECKBOX_ITEMS[$_TD_UI_CHECKBOX_SEL]}"
+  [[ -z "$task_line" ]] && return
+
+  local task_id="${task_line%%	*}"
+
+  export TASK_ID="$task_id"
+  _td_storage_modify "$_TD_UI_TASKS_FILE" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var tid = env.objectForKey("TASK_ID").js;
+    var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
+    if (idx >= 0) { data.tasks[idx].status = data.statuses[data.statuses.length - 1]; data.tasks[idx].updated = new Date().toISOString(); }
+  '
+  unset TASK_ID
+
+  _td_interactive_load_data "$_TD_UI_TASKS_FILE"
+  _td_interactive_flatten_for_checkbox
+
+  if (( _TD_UI_CHECKBOX_SEL > _TD_UI_CHECKBOX_COUNT )); then
+    _TD_UI_CHECKBOX_SEL=$_TD_UI_CHECKBOX_COUNT
+  fi
+  (( _TD_UI_CHECKBOX_SEL < 1 )) && _TD_UI_CHECKBOX_SEL=1
+
+  _td_interactive_status_msg " Marked done "
+}
+
+# Action: delete selected checkbox task
+_td_interactive_action_checkbox_delete() {
+  (( _TD_UI_CHECKBOX_COUNT == 0 )) && return
+
+  local task_line="${_TD_UI_CHECKBOX_ITEMS[$_TD_UI_CHECKBOX_SEL]}"
+  [[ -z "$task_line" ]] && return
+
+  local task_id="${task_line%%	*}"
+
+  export TASK_ID="$task_id"
+  _td_storage_modify "$_TD_UI_TASKS_FILE" '
+    var tid = $.NSProcessInfo.processInfo.environment.objectForKey("TASK_ID").js;
+    data.tasks = data.tasks.filter(function(t) { return t.id !== tid; });
+  '
+  unset TASK_ID
+
+  _td_interactive_load_data "$_TD_UI_TASKS_FILE"
+  _td_interactive_flatten_for_checkbox
+
+  if (( _TD_UI_CHECKBOX_SEL > _TD_UI_CHECKBOX_COUNT )); then
+    _TD_UI_CHECKBOX_SEL=$_TD_UI_CHECKBOX_COUNT
+  fi
+  (( _TD_UI_CHECKBOX_SEL < 1 )) && _TD_UI_CHECKBOX_SEL=1
+
+  _td_interactive_status_msg " Task deleted "
 }
 
 # Action: cycle selected task to next status column
@@ -643,7 +961,10 @@ _td_interactive_render() {
 }
 
 # Main engine entry point
+# Usage: _td_interactive_run [force_checkbox]
 _td_interactive_run() {
+  local force_checkbox="${1:-0}"
+
   # TTY gate (Pitfall 8)
   [[ -t 0 ]] && [[ -t 1 ]] || {
     _td_error "Interactive mode requires a terminal"
@@ -664,6 +985,15 @@ _td_interactive_run() {
 
   _TD_UI_TASKS_FILE="$tasks_file"
   _td_interactive_load_data "$tasks_file" || return 1
+
+  # Auto-detect checkbox mode: exactly 2 statuses, or forced via flag
+  if (( force_checkbox )) || (( ${#_TD_UI_STATUSES[@]} == 2 )); then
+    _TD_UI_CHECKBOX_MODE=1
+    _td_interactive_flatten_for_checkbox
+  else
+    _TD_UI_CHECKBOX_MODE=0
+  fi
+
   _td_interactive_init_selection
 
   # zcurses lifecycle
@@ -687,7 +1017,11 @@ _td_interactive_run() {
     }
 
     # Initial render
-    _td_interactive_render "$_TD_UI_LIST_NAME"
+    if (( _TD_UI_CHECKBOX_MODE )); then
+      _td_interactive_render_checkbox
+    else
+      _td_interactive_render "$_TD_UI_LIST_NAME"
+    fi
 
     # Input loop
     local key kkey
@@ -701,24 +1035,61 @@ _td_interactive_run() {
           continue
         fi
 
-        case $key$kkey in
-          q) break ;;
-          j|DOWN)  _td_interactive_nav_down; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
-          k|UP)    _td_interactive_nav_up; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
-          l|RIGHT) _td_interactive_nav_right; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
-          h|LEFT)  _td_interactive_nav_left; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
-          s) _td_interactive_action_status; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
-          d) _td_interactive_action_done; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
-          x) _td_interactive_action_delete; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
-          o) _td_interactive_action_open ;;
-          '?')
-            if (( _TD_UI_HELP_VISIBLE )); then
-              _td_interactive_hide_help
-            else
-              _td_interactive_show_help
-            fi
-            ;;
-        esac
+        if (( _TD_UI_CHECKBOX_MODE )); then
+          # Checkbox mode input handling
+          case $key$kkey in
+            q) break ;;
+            j|DOWN)
+              (( _TD_UI_CHECKBOX_SEL++ ))
+              (( _TD_UI_CHECKBOX_SEL > _TD_UI_CHECKBOX_COUNT )) && _TD_UI_CHECKBOX_SEL=1
+              _td_interactive_render_checkbox
+              ;;
+            k|UP)
+              (( _TD_UI_CHECKBOX_SEL-- ))
+              (( _TD_UI_CHECKBOX_SEL < 1 )) && _TD_UI_CHECKBOX_SEL=$_TD_UI_CHECKBOX_COUNT
+              _td_interactive_render_checkbox
+              ;;
+            ' '|$'\n')
+              _td_interactive_action_toggle
+              _td_interactive_render_checkbox
+              ;;
+            d)
+              _td_interactive_action_checkbox_done
+              _td_interactive_render_checkbox
+              ;;
+            x)
+              _td_interactive_action_checkbox_delete
+              _td_interactive_render_checkbox
+              ;;
+            '?')
+              if (( _TD_UI_HELP_VISIBLE )); then
+                _td_interactive_hide_help
+              else
+                _td_interactive_show_help
+              fi
+              ;;
+          esac
+        else
+          # Kanban mode input handling
+          case $key$kkey in
+            q) break ;;
+            j|DOWN)  _td_interactive_nav_down; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
+            k|UP)    _td_interactive_nav_up; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
+            l|RIGHT) _td_interactive_nav_right; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
+            h|LEFT)  _td_interactive_nav_left; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
+            s) _td_interactive_action_status; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
+            d) _td_interactive_action_done; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
+            x) _td_interactive_action_delete; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
+            o) _td_interactive_action_open ;;
+            '?')
+              if (( _TD_UI_HELP_VISIBLE )); then
+                _td_interactive_hide_help
+              else
+                _td_interactive_show_help
+              fi
+              ;;
+          esac
+        fi
       fi
       # Timeout branch: check resize flag
       if (( _TD_UI_NEED_REDRAW )); then

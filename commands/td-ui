@@ -1,4 +1,9 @@
 # td-ui - interactive board view (zcurses)
 # Autoloaded: file body = function body
 
-_td_interactive_run
+local -a _td_ui_args=("$@")
+local checkbox_flag=0
+if [[ " ${_td_ui_args[*]} " == *" --checkbox "* ]]; then
+  checkbox_flag=1
+fi
+_td_interactive_run $checkbox_flag
