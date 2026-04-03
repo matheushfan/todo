@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
+milestone: v1.1
+milestone_name: Interactive Experience
 status: verifying
-stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-04-03T22:33:48.603Z"
+stopped_at: Completed 14-01-PLAN.md
+last_updated: "2026-04-03T22:47:04.366Z"
 last_activity: 2026-04-03
 progress:
-  total_phases: 8
+  total_phases: 6
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 9
+  total_plans: 5
+  completed_plans: 5
   percent: 0
 ---
 
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 08 P02 | 3min | 2 tasks | 2 files |
 | Phase 08 P01 | 4min | 2 tasks | 6 files |
 | Phase 13 P01 | 2min | 1 tasks | 1 files |
+| Phase 14 P01 | 2min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -101,6 +102,8 @@ Recent decisions affecting current work:
 - [Phase 08]: Truncate plain text before colorizing to avoid splitting ANSI escape sequences
 - [Phase 13]: Reverse video for entire task row, skip per-field colors when selected
 - [Phase 13]: Wrap at top/bottom of column, skip empty columns on h/l, clamp row on column switch
+- [Phase 14]: TRAPWINCH function form for zcurses signal compat; redraw flag polling pattern
+- [Phase 14]: Help overlay as separate zcurses window; any-key dismiss pattern
 
 ### Pending Todos
 
@@ -113,6 +116,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-03T22:33:48.600Z
-Stopped at: Completed 13-01-PLAN.md
+Last session: 2026-04-03T22:47:04.364Z
+Stopped at: Completed 14-01-PLAN.md
 Resume file: None

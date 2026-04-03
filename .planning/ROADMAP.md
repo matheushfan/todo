@@ -105,9 +105,9 @@ Plans:
   1. User can view tasks in checkbox mode ([ ]/[x]) for lists that only need todo/done
   2. User can press `?` in interactive mode to see a help overlay listing all keybindings
   3. Resizing the terminal during interactive mode redraws the layout correctly without crashing
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 Plans:
-- [ ] 14-01-PLAN.md — Resize handling (TRAPWINCH) and help overlay (? key)
+- [x] 14-01-PLAN.md — Resize handling (TRAPWINCH) and help overlay (? key)
 - [ ] 14-02-PLAN.md — Checkbox rendering mode with auto-detect and --checkbox flag
 **UI hint**: yes
 
@@ -131,4 +131,4 @@ Phases execute in numeric order: 9 → 10 → 11 → 12 → 13 → 14
 | 11. Summary Command | v1.1 | 0/TBD | Complete    | 2026-04-03 |
 | 12. Interactive Engine Foundation | v1.1 | 0/1 | Planning complete | - |
 | 13. Interactive Navigation & Actions | v1.1 | 0/TBD | Complete    | 2026-04-03 |
-| 14. Checkbox Mode & Polish | v1.1 | 0/2 | Planning complete | - |
+| 14. Checkbox Mode & Polish | v1.1 | 1/2 | In Progress|  |
