@@ -57,7 +57,9 @@ Plans:
   2. User can run `td archive ls` and see previously archived tasks with all original fields
   3. Archived tasks are stored in a separate archive.json per list (not mixed with active tasks)
   4. Active task operations (ls, board, bulk) never load or display archived tasks
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 10-01-PLAN.md — Archive storage engine, td-archive command (archive/ls/undo), help update
 
 ### Phase 11: Summary Command
 **Goal**: Users can get a quick overview of pending work across lists without opening the board
@@ -120,7 +122,7 @@ Phases execute in numeric order: 9 → 10 → 11 → 12 → 13 → 14
 | 7. Colored Output & List View | v1.0 | 1/1 | Complete | 2026-04-02 |
 | 8. Kanban View & Bulk Operations | v1.0 | 2/2 | Complete | 2026-04-02 |
 | 9. Schema Evolution & Detail View | v1.1 | 0/1 | Planning complete | - |
-| 10. Archive Storage | v1.1 | 0/TBD | Not started | - |
+| 10. Archive Storage | v1.1 | 0/1 | Planning complete | - |
 | 11. Summary Command | v1.1 | 0/TBD | Not started | - |
 | 12. Interactive Engine Foundation | v1.1 | 0/TBD | Not started | - |
 | 13. Interactive Navigation & Actions | v1.1 | 0/TBD | Not started | - |
