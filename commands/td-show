@@ -1,0 +1,106 @@
+# td-show - display full task details
+# Autoloaded: file body = function body
+
+local id_prefix="$1"
+
+[[ -z "$id_prefix" ]] && {
+  _td_error "Usage: todo show <id>"
+  return 1
+}
+
+_td_storage_init
+
+local tasks_file
+tasks_file="$(_td_storage_list_path)"
+
+local task_id
+task_id="$(_td_resolve_task_id "$tasks_file" "$id_prefix")" || return 1
+
+# Single JXA call to get all fields tab-separated
+local output
+output=$(TASK_ID="$task_id" JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+  function run() {
+    var env = $.NSProcessInfo.processInfo.environment;
+    var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+    var tid = env.objectForKey("TASK_ID").js;
+    var t = null;
+    for (var i = 0; i < data.tasks.length; i++) {
+      if (data.tasks[i].id === tid) { t = data.tasks[i]; break; }
+    }
+    if (!t) return "ERROR:not_found";
+    var tags = t.tags && t.tags.length > 0 ? t.tags.join(", ") : "__EMPTY__";
+    var ref = t.ref || "__EMPTY__";
+    var created = t.created || "__EMPTY__";
+    var updated = t.updated || "__EMPTY__";
+    // Return all fields tab-separated (sentinels prevent empty-field collapse)
+    return [t.id, t.text, t.status, t.priority, tags, ref, created, updated].join("\t");
+  }
+' 2>/dev/null) || { _td_error "Failed to read task"; return 1; }
+
+[[ "$output" == "ERROR:not_found" ]] && { _td_error "Task not found"; return 1; }
+
+# Parse fields
+local task_full_id task_text task_status task_priority task_tags task_ref task_created task_updated
+IFS=$'\t' read -r task_full_id task_text task_status task_priority task_tags task_ref task_created task_updated <<< "$output"
+
+# Replace sentinels with empty strings
+[[ "$task_tags" == "__EMPTY__" ]] && task_tags=""
+[[ "$task_ref" == "__EMPTY__" ]] && task_ref=""
+[[ "$task_created" == "__EMPTY__" ]] && task_created=""
+[[ "$task_updated" == "__EMPTY__" ]] && task_updated=""
+
+# Relative time helper (inline JXA)
+_td_show_relative_time() {
+  local iso="$1"
+  [[ -z "$iso" ]] && { printf "%s" "—"; return; }
+  ISO_TIME="$iso" osascript -l JavaScript -e '
+    function run() {
+      var iso = $.NSProcessInfo.processInfo.environment.objectForKey("ISO_TIME").js;
+      var d = new Date(iso);
+      var now = new Date();
+      var diff = Math.floor((now - d) / 1000);
+      if (diff < 60) return diff + "s ago";
+      if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+      if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+      if (diff < 2592000) return Math.floor(diff / 86400) + "d ago";
+      return Math.floor(diff / 2592000) + "mo ago";
+    }
+  ' 2>/dev/null
+}
+
+# Format output — card-style with aligned labels
+local label_w=12
+local dim="${TD_COLORS[dim]}"
+local reset="${TD_COLORS[reset]}"
+local bold="${TD_COLORS[bold]}"
+
+printf "\n"
+printf "  ${dim}%-${label_w}s${reset} %s\n" "ID" "${task_full_id}"
+printf "  ${dim}%-${label_w}s${reset} %s\n" "Text" "${bold}${task_text}${reset}"
+printf "  ${dim}%-${label_w}s${reset} ${TD_COLORS[cyan]}%s${reset}\n" "Status" "${task_status}"
+
+# Priority with color
+local pri_color="${TD_PRIORITY_COLORS[$task_priority]}"
+printf "  ${dim}%-${label_w}s${reset} ${pri_color}%s${reset}\n" "Priority" "${task_priority}"
+
+# Tags
+if [[ -n "$task_tags" ]]; then
+  printf "  ${dim}%-${label_w}s${reset} %s\n" "Tags" "${task_tags}"
+else
+  printf "  ${dim}%-${label_w}s${reset} ${dim}%s${reset}\n" "Tags" "—"
+fi
+
+# Ref
+if [[ -n "$task_ref" ]]; then
+  printf "  ${dim}%-${label_w}s${reset} ${TD_COLORS[blue]}%s${reset}\n" "Ref" "${task_ref}"
+else
+  printf "  ${dim}%-${label_w}s${reset} ${dim}%s${reset}\n" "Ref" "—"
+fi
+
+# Timestamps — relative with absolute in parentheses
+local rel_created rel_updated
+rel_created="$(_td_show_relative_time "$task_created")"
+rel_updated="$(_td_show_relative_time "$task_updated")"
+printf "  ${dim}%-${label_w}s${reset} %s ${dim}(%s)${reset}\n" "Created" "$rel_created" "$task_created"
+printf "  ${dim}%-${label_w}s${reset} %s ${dim}(%s)${reset}\n" "Updated" "$rel_updated" "$task_updated"
+printf "\n"

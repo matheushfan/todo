@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-04-02T23:52:43.351Z"
-last_activity: 2026-04-02
+stopped_at: Completed 09-01-PLAN.md
+last_updated: "2026-04-03T20:12:33.030Z"
+last_activity: 2026-04-03
 progress:
   total_phases: 8
-  completed_phases: 8
-  total_plans: 11
-  completed_plans: 11
+  completed_phases: 2
+  total_plans: 4
+  completed_plans: 9
   percent: 0
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-04-02)
 
 ## Current Position
 
-Phase: 08
-Plan: Not started
+Phase: 08 (kanban-view-bulk-operations) — EXECUTING
+Plan: 2 of 2
 Status: Phase complete — ready for verification
-Last activity: 2026-04-03 - Completed quick task 260403-mb1: Rename priority tags to English
+Last activity: 2026-04-03
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -63,6 +63,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 07 P01 | 2min | 2 tasks | 5 files |
 | Phase 08 P02 | 3min | 2 tasks | 2 files |
 | Phase 08 P01 | 4min | 2 tasks | 6 files |
+| Phase 09 P01 | 4min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -98,16 +99,13 @@ Recent decisions affecting current work:
 - [Phase 08]: Declare all locals before loops to avoid zsh local-in-loop output leak
 - [Phase 08]: Single JXA call groups all tasks by status using __COL_SEP__ delimiter for kanban rendering
 - [Phase 08]: Truncate plain text before colorizing to avoid splitting ANSI escape sequences
+- [Phase 09]: Use __EMPTY__ sentinel in JXA output to prevent zsh read from collapsing empty tab-separated fields
+- [Phase 09]: Schema evolution is additive: ref field defaults to empty string, (t.ref || '') handles old tasks
+- [Phase 09]: Ref indicator uses Unicode arrow (U+2192) appended to task text in list and board views
 
 ### Pending Todos
 
 None yet.
-
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260403-mb1 | Rename priority tags to English (alta/média/baixa → high/medium/low) | 2026-04-03 | 7654e05 | [260403-mb1-rename-priority-tags-to-english](./quick/260403-mb1-rename-priority-tags-to-english/) |
 
 ### Blockers/Concerns
 
@@ -116,6 +114,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-03T19:07:21Z
-Stopped at: Completed quick task 260403-mb1 (rename priorities to English)
+Last session: 2026-04-03T20:12:33.027Z
+Stopped at: Completed 09-01-PLAN.md
 Resume file: None

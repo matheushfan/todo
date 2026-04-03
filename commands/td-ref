@@ -1,0 +1,55 @@
+# td-ref - attach or view reference URL for a task
+# Autoloaded: file body = function body
+
+local id_prefix="$1"
+local ref_url="${2:-}"
+
+[[ -z "$id_prefix" ]] && {
+  _td_error "Usage: todo ref <id> [url]"
+  return 1
+}
+
+_td_storage_init
+
+local tasks_file
+tasks_file="$(_td_storage_list_path)"
+
+local task_id
+task_id="$(_td_resolve_task_id "$tasks_file" "$id_prefix")" || return 1
+
+if [[ -z "$ref_url" ]]; then
+  # View mode: show current ref
+  local current_ref
+  current_ref=$(TASK_ID="$task_id" JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+      var tid = env.objectForKey("TASK_ID").js;
+      for (var i = 0; i < data.tasks.length; i++) {
+        if (data.tasks[i].id === tid) return data.tasks[i].ref || "";
+      }
+      return "";
+    }
+  ' 2>/dev/null)
+
+  if [[ -z "$current_ref" ]]; then
+    _td_success "No ref set for task ${task_id:0:8}"
+  else
+    printf "%s\n" "$current_ref"
+  fi
+else
+  # Set mode: attach ref URL
+  export TASK_ID="$task_id"
+  export NEW_REF="$ref_url"
+  _td_storage_modify "$tasks_file" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var tid = env.objectForKey("TASK_ID").js;
+    var newRef = env.objectForKey("NEW_REF").js;
+    var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
+    if (idx === -1) throw "Task not found";
+    data.tasks[idx].ref = newRef;
+    data.tasks[idx].updated = new Date().toISOString();
+  ' || { unset TASK_ID NEW_REF; return 1; }
+  unset TASK_ID NEW_REF
+  _td_success "Ref set for task ${task_id:0:8}"
+fi
