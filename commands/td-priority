@@ -5,19 +5,19 @@ local id_prefix="$1"
 local new_priority="$2"
 
 [[ -z "$id_prefix" ]] && {
-  _td_error "Usage: todo priority <task-id> <alta|media|baixa>"
+  _td_error "Usage: todo priority <task-id> <high|medium|low>"
   return 1
 }
 
 [[ -z "$new_priority" ]] && {
-  _td_error "Usage: todo priority <task-id> <alta|media|baixa>"
+  _td_error "Usage: todo priority <task-id> <high|medium|low>"
   return 1
 }
 
 case "$new_priority" in
-  alta|media|baixa) ;;
+  high|medium|low) ;;
   *)
-    _td_error "Invalid priority '$new_priority'. Use: alta, media, baixa"
+    _td_error "Invalid priority '$new_priority'. Use: high, medium, low"
     return 1
     ;;
 esac

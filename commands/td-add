@@ -7,17 +7,17 @@ zparseopts -D -E - p:=priority_opt -priority:=priority_opt t+:=tags_opt -tags+:=
 local text="$*"
 
 [[ -z "$text" ]] && {
-  _td_error "Usage: todo add [-p alta|media|baixa] [-t tag ...] <title>"
+  _td_error "Usage: todo add [-p high|medium|low] [-t tag ...] <title>"
   return 1
 }
 
-local task_priority="media"
+local task_priority="medium"
 if (( ${#priority_opt} > 0 )); then
   task_priority="${priority_opt[2]}"
   case "$task_priority" in
-    alta|media|baixa) ;;
+    high|medium|low) ;;
     *)
-      _td_error "Invalid priority '$task_priority'. Use: alta, media, baixa"
+      _td_error "Invalid priority '$task_priority'. Use: high, medium, low"
       return 1
       ;;
   esac

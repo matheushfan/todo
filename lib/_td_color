@@ -34,11 +34,11 @@ else
   TD_COLORS[reset]=''
 fi
 
-# Priority color map (Portuguese priority names)
+# Priority color map
 typeset -gA TD_PRIORITY_COLORS
-TD_PRIORITY_COLORS[alta]="${TD_COLORS[red]}"
-TD_PRIORITY_COLORS[media]="${TD_COLORS[yellow]}"
-TD_PRIORITY_COLORS[baixa]="${TD_COLORS[green]}"
+TD_PRIORITY_COLORS[high]="${TD_COLORS[red]}"
+TD_PRIORITY_COLORS[medium]="${TD_COLORS[yellow]}"
+TD_PRIORITY_COLORS[low]="${TD_COLORS[green]}"
 
 # Colorize a string: _td_colorize <color_name> <text>
 _td_colorize() {

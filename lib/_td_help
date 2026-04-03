@@ -16,7 +16,7 @@ Commands:
   rm <id>                    Remove a task
   done <id>                  Mark task as completed
   move <id> <status>         Move task to a status (todo, doing, done)
-  priority <id> <value>      Set priority (alta, media, baixa)
+  priority <id> <value>      Set priority (high, medium, low)
   status                     List statuses for current list
   status add <name>          Add a custom status
   status rm <name>           Remove a status (no tasks must use it)

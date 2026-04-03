@@ -113,7 +113,7 @@ _td_storage_add_task() {
   local file="$1"
   local text="$2"
   local task_status="${3:-todo}"
-  local task_priority="${4:-media}"
+  local task_priority="${4:-medium}"
   local task_id
   task_id="$(uuidgen)" || return 1
   local tmpfile="${file}.tmp.$$"

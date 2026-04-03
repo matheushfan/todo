@@ -169,9 +169,9 @@ _td_board_format_card() {
   # Priority indicator
   local pri_char
   case "$priority" in
-    alta)  pri_char="${TD_PRIORITY_COLORS[alta]}!${TD_COLORS[reset]}" ;;
-    media) pri_char="${TD_PRIORITY_COLORS[media]}~${TD_COLORS[reset]}" ;;
-    baixa) pri_char="${TD_PRIORITY_COLORS[baixa]}.${TD_COLORS[reset]}" ;;
+    high)   pri_char="${TD_PRIORITY_COLORS[high]}!${TD_COLORS[reset]}" ;;
+    medium) pri_char="${TD_PRIORITY_COLORS[medium]}~${TD_COLORS[reset]}" ;;
+    low)    pri_char="${TD_PRIORITY_COLORS[low]}.${TD_COLORS[reset]}" ;;
     *)     pri_char=" " ;;
   esac
 
@@ -223,9 +223,9 @@ _td_board_stacked() {
         if (tasks.length === 0) return "";
         var lines = tasks.map(function(t) {
           var pri = "";
-          if (t.priority === "alta") pri = "!";
-          else if (t.priority === "media") pri = "~";
-          else if (t.priority === "baixa") pri = ".";
+          if (t.priority === "high") pri = "!";
+          else if (t.priority === "medium") pri = "~";
+          else if (t.priority === "low") pri = ".";
           return pri + " " + t.id.substring(0, 8) + " " + t.text;
         });
         return lines.join("\n");
