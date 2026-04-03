@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Interactive Experience
 status: verifying
-stopped_at: Completed 14-01-PLAN.md
-last_updated: "2026-04-03T22:47:04.366Z"
+stopped_at: Completed 14-02-PLAN.md
+last_updated: "2026-04-03T22:52:39.081Z"
 last_activity: 2026-04-03
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 5
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -65,6 +65,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 08 P01 | 4min | 2 tasks | 6 files |
 | Phase 13 P01 | 2min | 1 tasks | 1 files |
 | Phase 14 P01 | 2min | 2 tasks | 1 files |
+| Phase 14 P02 | 3min | 1 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -104,6 +105,9 @@ Recent decisions affecting current work:
 - [Phase 13]: Wrap at top/bottom of column, skip empty columns on h/l, clamp row on column switch
 - [Phase 14]: TRAPWINCH function form for zcurses signal compat; redraw flag polling pattern
 - [Phase 14]: Help overlay as separate zcurses window; any-key dismiss pattern
+- [Phase 14]: Auto-detect checkbox mode when list has exactly 2 statuses
+- [Phase 14]: Flat list navigation with single index for checkbox mode (no col/row)
+- [Phase 14]: Checkbox body renders on stdscr directly, only header+statusbar as windows
 
 ### Pending Todos
 
@@ -116,6 +120,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-03T22:47:04.364Z
-Stopped at: Completed 14-01-PLAN.md
+Last session: 2026-04-03T22:52:39.078Z
+Stopped at: Completed 14-02-PLAN.md
 Resume file: None

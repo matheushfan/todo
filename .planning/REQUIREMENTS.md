@@ -27,7 +27,7 @@ Requirements for v1.1 Interactive Experience. Each maps to roadmap phases.
 
 ### UX & Polish
 
-- [ ] **UX-05**: User can view tasks in checkbox mode ([ ]/[x]) for simple lists
+- [x] **UX-05**: User can view tasks in checkbox mode ([ ]/[x]) for simple lists
 - [ ] **UX-06**: User can see pending task count via `td summary` command
 - [x] **UX-07**: Interactive mode shows help overlay with `?` key listing all keybindings
 - [x] **UX-08**: Interactive view handles terminal resize gracefully (redraw on SIGWINCH)
@@ -86,7 +86,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TUI-03 | Phase 13 | Pending |
 | TUI-04 | Phase 13 | Pending |
 | TUI-05 | Phase 13 | Pending |
-| UX-05 | Phase 14 | Pending |
+| UX-05 | Phase 14 | Complete |
 | UX-07 | Phase 14 | Complete |
 | UX-08 | Phase 14 | Complete |
 

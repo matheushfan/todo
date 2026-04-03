@@ -32,7 +32,7 @@ Build a zero-dependency CLI task manager in pure zsh, progressing from storage e
 - [x] **Phase 11: Summary Command** - td-summary with task counts by status and --oneline for prompt integration (completed 2026-04-03)
 - [ ] **Phase 12: Interactive Engine Foundation** - td-ui entry point with zcurses-based terminal lifecycle, render loop, and clean exit on all paths
 - [x] **Phase 13: Interactive Navigation & Actions** - Keyboard navigation (j/k/h/l + arrows), status cycling, done/delete, and open ref URL from interactive view (completed 2026-04-03)
-- [ ] **Phase 14: Checkbox Mode & Polish** - Checkbox rendering for simple lists, help overlay, and graceful terminal resize handling
+- [x] **Phase 14: Checkbox Mode & Polish** - Checkbox rendering for simple lists, help overlay, and graceful terminal resize handling (completed 2026-04-03)
 
 ## Phase Details
 
@@ -105,10 +105,10 @@ Plans:
   1. User can view tasks in checkbox mode ([ ]/[x]) for lists that only need todo/done
   2. User can press `?` in interactive mode to see a help overlay listing all keybindings
   3. Resizing the terminal during interactive mode redraws the layout correctly without crashing
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 Plans:
 - [x] 14-01-PLAN.md — Resize handling (TRAPWINCH) and help overlay (? key)
-- [ ] 14-02-PLAN.md — Checkbox rendering mode with auto-detect and --checkbox flag
+- [x] 14-02-PLAN.md — Checkbox rendering mode with auto-detect and --checkbox flag
 **UI hint**: yes
 
 ## Progress
@@ -131,4 +131,4 @@ Phases execute in numeric order: 9 → 10 → 11 → 12 → 13 → 14
 | 11. Summary Command | v1.1 | 0/TBD | Complete    | 2026-04-03 |
 | 12. Interactive Engine Foundation | v1.1 | 0/1 | Planning complete | - |
 | 13. Interactive Navigation & Actions | v1.1 | 0/TBD | Complete    | 2026-04-03 |
-| 14. Checkbox Mode & Polish | v1.1 | 1/2 | In Progress|  |
+| 14. Checkbox Mode & Polish | v1.1 | 2/2 | Complete   | 2026-04-03 |
