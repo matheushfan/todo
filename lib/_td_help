@@ -22,6 +22,9 @@ Commands:
   status rm <name>           Remove a status (no tasks must use it)
   tag add <id> <tag>         Add a tag to a task
   tag rm <id> <tag>          Remove a tag from a task
+  archive                    Archive completed tasks
+  archive ls                 List archived tasks
+  archive undo <id>          Restore archived task to active list
   list                       List all lists
   list create <name>         Create a new list
   list switch <name>         Switch active list
