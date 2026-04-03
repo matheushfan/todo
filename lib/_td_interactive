@@ -15,6 +15,12 @@ typeset -g _TD_UI_SEL_ROW=1
 # Tasks file path (global for action functions)
 typeset -g _TD_UI_TASKS_FILE=""
 
+# Resize state
+typeset -g _TD_UI_NEED_REDRAW=0
+
+# List name (global for resize handler access)
+typeset -g _TD_UI_LIST_NAME=""
+
 # Load task data via single JXA call into zsh arrays
 # Usage: _td_interactive_load_data <tasks_file>
 _td_interactive_load_data() {
@@ -241,6 +247,17 @@ _td_interactive_adjust_selection() {
   elif (( _TD_UI_SEL_ROW > count )); then
     _TD_UI_SEL_ROW=$count
   fi
+}
+
+# Handle terminal resize: destroy windows, recreate, re-render
+_td_interactive_handle_resize() {
+  _td_interactive_cleanup_windows
+  zcurses clear stdscr redraw
+  zcurses refresh stdscr
+  _td_interactive_create_windows
+  _td_interactive_render "$_TD_UI_LIST_NAME"
+  _td_interactive_adjust_selection
+  _TD_UI_NEED_REDRAW=0
 }
 
 # Action: cycle selected task to next status column
@@ -541,9 +558,9 @@ _td_interactive_run() {
 
   # Load data
   _td_storage_init || return 1
-  local tasks_file list_name
+  local tasks_file
   tasks_file="$(_td_storage_list_path)" || return 1
-  list_name="$(_td_storage_active_list)"
+  _TD_UI_LIST_NAME="$(_td_storage_active_list)"
 
   _TD_UI_TASKS_FILE="$tasks_file"
   _td_interactive_load_data "$tasks_file" || return 1
@@ -564,30 +581,40 @@ _td_interactive_run() {
     # Create windows
     _td_interactive_create_windows
 
+    # TRAPWINCH: set redraw flag on terminal resize (function form for zcurses compat)
+    TRAPWINCH() {
+      _TD_UI_NEED_REDRAW=1
+    }
+
     # Initial render
-    _td_interactive_render "$list_name"
+    _td_interactive_render "$_TD_UI_LIST_NAME"
 
     # Input loop
     local key kkey
-    zcurses timeout stdscr 200  # 200ms polling for SIGWINCH workaround
+    zcurses timeout stdscr 200  # 200ms polling for resize detection
 
     while true; do
       if zcurses input stdscr key kkey; then
         case $key$kkey in
           q) break ;;
-          j|DOWN)  _td_interactive_nav_down; _td_interactive_render "$list_name" ;;
-          k|UP)    _td_interactive_nav_up; _td_interactive_render "$list_name" ;;
-          l|RIGHT) _td_interactive_nav_right; _td_interactive_render "$list_name" ;;
-          h|LEFT)  _td_interactive_nav_left; _td_interactive_render "$list_name" ;;
-          s) _td_interactive_action_status; _td_interactive_render "$list_name" ;;
-          d) _td_interactive_action_done; _td_interactive_render "$list_name" ;;
-          x) _td_interactive_action_delete; _td_interactive_render "$list_name" ;;
+          j|DOWN)  _td_interactive_nav_down; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
+          k|UP)    _td_interactive_nav_up; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
+          l|RIGHT) _td_interactive_nav_right; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
+          h|LEFT)  _td_interactive_nav_left; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
+          s) _td_interactive_action_status; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
+          d) _td_interactive_action_done; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
+          x) _td_interactive_action_delete; _td_interactive_render "$_TD_UI_LIST_NAME" ;;
           o) _td_interactive_action_open ;;
         esac
       fi
-      # Timeout branch: check resize flag (Phase 14 will fully implement)
+      # Timeout branch: check resize flag
+      if (( _TD_UI_NEED_REDRAW )); then
+        _td_interactive_handle_resize
+      fi
     done
   } always {
+    # Remove TRAPWINCH to avoid leaking the handler
+    unfunction TRAPWINCH 2>/dev/null
     # Cleanup all windows
     _td_interactive_cleanup_windows
     echoti cnorm  # show cursor
