@@ -1,13 +1,15 @@
 # td-add - create a new task
 # Autoloaded: file body = function body
 
-local -a priority_opt tags_opt
-zparseopts -D -E - p:=priority_opt -priority:=priority_opt t+:=tags_opt -tags+:=tags_opt
+local -a priority_opt tags_opt ref_opt
+zparseopts -D -E - p:=priority_opt -priority:=priority_opt t+:=tags_opt -tags+:=tags_opt r:=ref_opt -ref:=ref_opt
 
 local text="$*"
 
+local task_ref="${ref_opt[2]:-}"
+
 [[ -z "$text" ]] && {
-  _td_error "Usage: todo add [-p alta|media|baixa] [-t tag ...] <title>"
+  _td_error "Usage: todo add [-p alta|media|baixa] [-t tag ...] [-r url] <title>"
   return 1
 }
 
@@ -40,12 +42,13 @@ local tasks_file
 tasks_file="$(_td_storage_list_path)"
 
 export TASK_TAGS="${(j:,:)tags}"
+export TASK_REF="$task_ref"
 
 local task_id
 task_id="$(_td_storage_add_task "$tasks_file" "$text" "todo" "$task_priority")" || {
-  unset TASK_TAGS
+  unset TASK_TAGS TASK_REF
   return 1
 }
-unset TASK_TAGS
+unset TASK_TAGS TASK_REF
 
 _td_success "Created task ${task_id:0:8}"
