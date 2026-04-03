@@ -32,13 +32,13 @@ assert_eq "strip_ansi: plain text unchanged" "hello world" "$result"
 # Single color code removed
 local red=$'\033[0;31m'
 local reset=$'\033[0m'
-result=$(_td_strip_ansi "${red}alta${reset}")
-assert_eq "strip_ansi: single color code" "alta" "$result"
+result=$(_td_strip_ansi "${red}high${reset}")
+assert_eq "strip_ansi: single color code" "high" "$result"
 
 # Combined codes removed (bold+color)
 local bold_red=$'\033[1;31m'
-result=$(_td_strip_ansi "${bold_red}alta${reset}")
-assert_eq "strip_ansi: combined bold+color" "alta" "$result"
+result=$(_td_strip_ansi "${bold_red}high${reset}")
+assert_eq "strip_ansi: combined bold+color" "high" "$result"
 
 # Nested codes
 local bold=$'\033[1m'
@@ -55,10 +55,10 @@ assert_eq "strip_ansi: dim code" "tags" "$result"
 
 printf "\n--- _td_visible_len ---\n"
 
-local colored_alta="${red}alta${reset}"
+local colored_high="${red}high${reset}"
 local vlen
-vlen=$(_td_visible_len "$colored_alta")
-assert_eq "visible_len: red 'alta' = 4" "4" "$vlen"
+vlen=$(_td_visible_len "$colored_high")
+assert_eq "visible_len: red 'high' = 4" "4" "$vlen"
 
 vlen=$(_td_visible_len "plain")
 assert_eq "visible_len: plain 'plain' = 5" "5" "$vlen"
@@ -68,17 +68,17 @@ assert_eq "visible_len: plain 'plain' = 5" "5" "$vlen"
 printf "\n--- _td_colorize ---\n"
 
 local colorized
-colorized=$(_td_colorize red "alta")
+colorized=$(_td_colorize red "high")
 assert_contains "colorize: contains color code" $'\033[0;31m' "$colorized"
 assert_contains "colorize: contains reset" $'\033[0m' "$colorized"
-assert_contains "colorize: contains text" "alta" "$colorized"
+assert_contains "colorize: contains text" "high" "$colorized"
 
 # ========== Unit Tests: _td_printf_colored ==========
 
 printf "\n--- _td_printf_colored ---\n"
 
 local padded
-padded=$(_td_printf_colored "${red}alta${reset}" 10)
+padded=$(_td_printf_colored "${red}high${reset}" 10)
 local stripped
 stripped=$(_td_strip_ansi "$padded")
 # Visible width should be 10 (4 chars + 6 spaces)
@@ -94,9 +94,9 @@ assert_contains "TD_COLORS[red] non-empty when enabled" $'\033' "${TD_COLORS[red
 
 printf "\n--- TD_PRIORITY_COLORS ---\n"
 
-assert_eq "priority alta -> red" "${TD_COLORS[red]}" "${TD_PRIORITY_COLORS[alta]}"
-assert_eq "priority media -> yellow" "${TD_COLORS[yellow]}" "${TD_PRIORITY_COLORS[media]}"
-assert_eq "priority baixa -> green" "${TD_COLORS[green]}" "${TD_PRIORITY_COLORS[baixa]}"
+assert_eq "priority high -> red" "${TD_COLORS[red]}" "${TD_PRIORITY_COLORS[high]}"
+assert_eq "priority medium -> yellow" "${TD_COLORS[yellow]}" "${TD_PRIORITY_COLORS[medium]}"
+assert_eq "priority low -> green" "${TD_COLORS[green]}" "${TD_PRIORITY_COLORS[low]}"
 
 # ========== Unit Tests: Piped output (TD_COLOR_ENABLED=0) ==========
 
@@ -147,14 +147,14 @@ assert_contains "td-ls header has Priority" "Priority" "$ls_output"
 assert_contains "td-ls header has Tags" "Tags" "$ls_output"
 assert_contains "td-ls header has Title" "Title" "$ls_output"
 
-# ========== Integration: td-ls with alta task shows alta in output ==========
+# ========== Integration: td-ls with high task shows high in output ==========
 
-printf "\n--- Integration: td-ls alta task ---\n"
+printf "\n--- Integration: td-ls high task ---\n"
 
-$TD_BIN add "Alta priority task" -p alta 2>&1 >/dev/null
+$TD_BIN add "High priority task" -p high 2>&1 >/dev/null
 ls_output=$($TD_BIN ls 2>&1 | cat)
 local stripped_output
 stripped_output=$(_td_strip_ansi "$ls_output")
-assert_contains "td-ls stripped output contains alta" "alta" "$stripped_output"
+assert_contains "td-ls stripped output contains high" "high" "$stripped_output"
 
 test_summary

@@ -146,20 +146,20 @@ printf "\n=== TAG-02: Filtering ===\n"
 local filter_data='{"name":"default","statuses":["todo","doing","done"],"tasks":[]}'
 printf '%s\n' "$filter_data" > "$tasks_file"
 
-# Create 3 tasks: todo/alta+work, doing/media+personal, done/baixa
+# Create 3 tasks: todo/high+work, doing/medium+personal, done/low
 local f_out1 f_out2 f_out3
-f_out1=$($TD_BIN add -p alta -t work "Filter task one" 2>&1)
+f_out1=$($TD_BIN add -p high -t work "Filter task one" 2>&1)
 local f_id1="${f_out1##*task }"
 f_id1="${f_id1:0:8}"
 
 # Move second task to doing
-f_out2=$($TD_BIN add -p media -t personal "Filter task two" 2>&1)
+f_out2=$($TD_BIN add -p medium -t personal "Filter task two" 2>&1)
 local f_id2="${f_out2##*task }"
 f_id2="${f_id2:0:4}"
 $TD_BIN move "$f_id2" doing >/dev/null 2>&1
 
 # Move third task to done
-f_out3=$($TD_BIN add -p baixa "Filter task three" 2>&1)
+f_out3=$($TD_BIN add -p low "Filter task three" 2>&1)
 local f_id3="${f_out3##*task }"
 f_id3="${f_id3:0:4}"
 $TD_BIN done "$f_id3" >/dev/null 2>&1
@@ -181,26 +181,26 @@ local ls_doing_no_todo=true
 [[ "$ls_doing" == *"Filter task one"* ]] && ls_doing_no_todo=false
 assert_eq "ls -s doing: excludes todo task" "true" "$ls_doing_no_todo"
 
-# Test 15: filter by priority=alta shows only alta task
-local ls_alta
-ls_alta=$($TD_BIN ls -p alta 2>&1)
-assert_contains "ls -p alta: shows alta task" "Filter task one" "$ls_alta"
-local ls_alta_no_media=true
-[[ "$ls_alta" == *"Filter task two"* ]] && ls_alta_no_media=false
-assert_eq "ls -p alta: excludes media task" "true" "$ls_alta_no_media"
+# Test 15: filter by priority=high shows only high task
+local ls_high
+ls_high=$($TD_BIN ls -p high 2>&1)
+assert_contains "ls -p high: shows high task" "Filter task one" "$ls_high"
+local ls_high_no_medium=true
+[[ "$ls_high" == *"Filter task two"* ]] && ls_high_no_medium=false
+assert_eq "ls -p high: excludes medium task" "true" "$ls_high_no_medium"
 
-# Test 16: combined filter status=todo + priority=alta
+# Test 16: combined filter status=todo + priority=high
 local ls_combo
-ls_combo=$($TD_BIN ls -s todo -p alta 2>&1)
-assert_contains "ls -s todo -p alta: shows matching task" "Filter task one" "$ls_combo"
+ls_combo=$($TD_BIN ls -s todo -p high 2>&1)
+assert_contains "ls -s todo -p high: shows matching task" "Filter task one" "$ls_combo"
 local ls_combo_no_other=true
 [[ "$ls_combo" == *"Filter task two"* ]] && ls_combo_no_other=false
-assert_eq "ls -s todo -p alta: excludes non-matching" "true" "$ls_combo_no_other"
+assert_eq "ls -s todo -p high: excludes non-matching" "true" "$ls_combo_no_other"
 
 # Test 17: combined filter that matches nothing
 local ls_empty
-ls_empty=$($TD_BIN ls -s done -p alta 2>&1)
-assert_contains "ls -s done -p alta: shows empty msg" "No tasks" "$ls_empty"
+ls_empty=$($TD_BIN ls -s done -p high 2>&1)
+assert_contains "ls -s done -p high: shows empty msg" "No tasks" "$ls_empty"
 
 # Test 18: no filters shows all tasks
 local ls_all

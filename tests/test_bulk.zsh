@@ -18,11 +18,11 @@ setup_bulk_env() {
   "name": "default",
   "statuses": ["todo", "doing", "done"],
   "tasks": [
-    {"id":"AAAA1111-0000-0000-0000-000000000001","text":"Task Alpha","status":"todo","priority":"alta","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"},
-    {"id":"BBBB2222-0000-0000-0000-000000000002","text":"Task Beta","status":"todo","priority":"media","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"},
-    {"id":"CCCC3333-0000-0000-0000-000000000003","text":"Task Gamma","status":"doing","priority":"baixa","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"},
-    {"id":"DDDD4444-0000-0000-0000-000000000004","text":"Task Delta","status":"doing","priority":"alta","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"},
-    {"id":"EEEE5555-0000-0000-0000-000000000005","text":"Task Epsilon","status":"done","priority":"media","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"}
+    {"id":"AAAA1111-0000-0000-0000-000000000001","text":"Task Alpha","status":"todo","priority":"high","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"},
+    {"id":"BBBB2222-0000-0000-0000-000000000002","text":"Task Beta","status":"todo","priority":"medium","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"},
+    {"id":"CCCC3333-0000-0000-0000-000000000003","text":"Task Gamma","status":"doing","priority":"low","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"},
+    {"id":"DDDD4444-0000-0000-0000-000000000004","text":"Task Delta","status":"doing","priority":"high","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"},
+    {"id":"EEEE5555-0000-0000-0000-000000000005","text":"Task Epsilon","status":"done","priority":"medium","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"}
   ]
 }
 JSON
@@ -182,8 +182,8 @@ cat > "$TD_DATA/lists/default/tasks.json" <<'JSON'
   "name": "default",
   "statuses": ["todo", "doing", "done"],
   "tasks": [
-    {"id":"ABAB1111-0000-0000-0000-000000000001","text":"First","status":"todo","priority":"media","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"},
-    {"id":"ABAB2222-0000-0000-0000-000000000002","text":"Second","status":"todo","priority":"media","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"}
+    {"id":"ABAB1111-0000-0000-0000-000000000001","text":"First","status":"todo","priority":"medium","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"},
+    {"id":"ABAB2222-0000-0000-0000-000000000002","text":"Second","status":"todo","priority":"medium","tags":[],"created":"2026-01-01T00:00:00Z","updated":"2026-01-01T00:00:00Z"}
   ]
 }
 JSON

@@ -5,9 +5,9 @@ A kanban-style task manager that lives in your terminal. Pure zsh, zero dependen
 ```
 ┌─── todo ──────────────┬──── doing ─────────────┬──── done ──────────────┐
 │ Fix auth middleware    │ Build payment API      │ Setup CI pipeline      │
-│ [alta]                │ [media]                │ [baixa]                │
+│ [high]                │ [medium]               │ [low]                  │
 │                       │ Write API docs         │ Design landing page    │
-│                       │ [baixa] #docs          │ [media] #design        │
+│                       │ [low] #docs            │ [medium] #design       │
 └───────────────────────┴────────────────────────┴────────────────────────┘
 ```
 
@@ -16,7 +16,7 @@ A kanban-style task manager that lives in your terminal. Pure zsh, zero dependen
 - **Kanban board** — inline columns per status, right in the terminal
 - **Multiple lists** — one per project/context, switch with a single command
 - **Custom statuses** — each list defines its own workflow (not just todo/doing/done)
-- **Priorities** — alta/media/baixa with color coding (red/yellow/green)
+- **Priorities** — high/medium/low with color coding (red/yellow/green)
 - **Tags** — free-form labels on any task
 - **Filters** — by status, priority
 - **Bulk operations** — done/move/rm multiple tasks at once
@@ -59,12 +59,12 @@ todo version
 
 ```bash
 todo add "Fix the login bug"                  # create task
-todo add -p alta "Deploy hotfix"              # with priority
+todo add -p high "Deploy hotfix"              # with priority
 todo add -t backend,urgent "Refactor auth"    # with tags
 
 todo ls                                       # list all tasks
 todo ls -s doing                              # filter by status
-todo ls -p alta                               # filter by priority
+todo ls -p high                               # filter by priority
 
 todo edit abc1 "Updated title"                # edit (ID prefix match)
 todo rm abc1                                  # remove
@@ -75,7 +75,7 @@ todo rm abc1                                  # remove
 ```bash
 todo move abc1 doing                          # change status
 todo done abc1                                # mark completed
-todo priority abc1 alta                       # set priority
+todo priority abc1 high                       # set priority
 ```
 
 ### Kanban Board

@@ -95,18 +95,18 @@ assert_contains "move: no args shows usage" "Usage" "$move_noargs"
 
 printf "\n=== PRIO-01: td-add -p and td-priority ===\n"
 
-# Test 9: add with -p alta creates task with alta priority
+# Test 9: add with -p high creates task with high priority
 local prio_add_out
-prio_add_out=$($TD_BIN add -p alta "High priority task" 2>&1)
+prio_add_out=$($TD_BIN add -p high "High priority task" 2>&1)
 local prio_add_rc=$?
-assert_exit_code "add -p alta: creates task (exit 0)" "0" "$prio_add_rc"
+assert_exit_code "add -p high: creates task (exit 0)" "0" "$prio_add_rc"
 
-# Test 10: verify alta priority in JSON
+# Test 10: verify high priority in JSON
 local prio_stored
 prio_stored=$(cat "$tasks_file" 2>/dev/null)
-assert_contains "add -p alta: priority is alta in JSON" '"priority": "alta"' "$prio_stored"
+assert_contains "add -p high: priority is high in JSON" '"priority": "high"' "$prio_stored"
 
-# Test 11: add without -p defaults to media priority
+# Test 11: add without -p defaults to medium priority
 local default_add_out
 default_add_out=$($TD_BIN add "Default priority task" 2>&1)
 local default_add_rc=$?
@@ -114,7 +114,7 @@ assert_exit_code "add: default priority (exit 0)" "0" "$default_add_rc"
 
 local default_stored
 default_stored=$(cat "$tasks_file" 2>/dev/null)
-assert_contains "add: default priority is media in JSON" '"priority": "media"' "$default_stored"
+assert_contains "add: default priority is medium in JSON" '"priority": "medium"' "$default_stored"
 
 # Test 12: add with invalid priority returns error
 local bad_prio_out
@@ -130,15 +130,15 @@ local prio_change_id="${prio_change_add##*task }"
 prio_change_id="${prio_change_id:0:4}"
 
 local prio_change_out
-prio_change_out=$($TD_BIN priority "$prio_change_id" baixa 2>&1)
+prio_change_out=$($TD_BIN priority "$prio_change_id" low 2>&1)
 local prio_change_rc=$?
 assert_exit_code "priority: changes priority (exit 0)" "0" "$prio_change_rc"
 assert_contains "priority: prints confirmation" "Set priority" "$prio_change_out"
 
-# Test 14: verify priority changed to baixa in JSON
+# Test 14: verify priority changed to low in JSON
 local prio_change_stored
 prio_change_stored=$(cat "$tasks_file" 2>/dev/null)
-assert_contains "priority: value is baixa in JSON" '"priority": "baixa"' "$prio_change_stored"
+assert_contains "priority: value is low in JSON" '"priority": "low"' "$prio_change_stored"
 
 # Test 15: priority with invalid value returns error
 local prio_invalid_out

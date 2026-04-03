@@ -25,10 +25,10 @@ setup_board_data() {
   local tasks_file="$(_td_storage_list_path)"
 
   # Add tasks across statuses
-  TASK_TAGS="" _td_storage_add_task "$tasks_file" "Design homepage" "todo" "alta" > /dev/null
-  TASK_TAGS="" _td_storage_add_task "$tasks_file" "Write tests" "todo" "media" > /dev/null
-  TASK_TAGS="" _td_storage_add_task "$tasks_file" "Code review" "doing" "baixa" > /dev/null
-  TASK_TAGS="" _td_storage_add_task "$tasks_file" "Deploy app" "done" "alta" > /dev/null
+  TASK_TAGS="" _td_storage_add_task "$tasks_file" "Design homepage" "todo" "high" > /dev/null
+  TASK_TAGS="" _td_storage_add_task "$tasks_file" "Write tests" "todo" "medium" > /dev/null
+  TASK_TAGS="" _td_storage_add_task "$tasks_file" "Code review" "doing" "low" > /dev/null
+  TASK_TAGS="" _td_storage_add_task "$tasks_file" "Deploy app" "done" "high" > /dev/null
 
   printf '%s' "$tasks_file"
 }
@@ -62,9 +62,9 @@ assert_contains "separator: | present" "|" "$output"
 echo ""
 echo "=== Board: Priority Indicators ==="
 
-assert_contains "priority: ! for alta" "!" "$output"
-assert_contains "priority: ~ for media" "~" "$output"
-assert_contains "priority: . for baixa" "." "$output"
+assert_contains "priority: ! for high" "!" "$output"
+assert_contains "priority: ~ for medium" "~" "$output"
+assert_contains "priority: . for low" "." "$output"
 
 # --- Test 5: Text truncation ---
 echo ""
@@ -74,7 +74,7 @@ tmpdir2=$(mktemp -d)
 TD_DATA="$tmpdir2"
 _td_storage_init
 tasks_file2="$(_td_storage_list_path)"
-TASK_TAGS="" _td_storage_add_task "$tasks_file2" "This is a very long task title that should definitely be truncated when displayed" "todo" "media" > /dev/null
+TASK_TAGS="" _td_storage_add_task "$tasks_file2" "This is a very long task title that should definitely be truncated when displayed" "todo" "medium" > /dev/null
 
 trunc_output=$(COLUMNS=60 _td_board_render "$tasks_file2" 2>&1)
 assert_contains "truncation: ~ marker present" "~" "$trunc_output"
@@ -109,8 +109,8 @@ _td_storage_init
 tasks_file3="$(_td_storage_list_path)"
 
 # Add tasks only in todo and done (doing is empty)
-TASK_TAGS="" _td_storage_add_task "$tasks_file3" "First task" "todo" "media" > /dev/null
-TASK_TAGS="" _td_storage_add_task "$tasks_file3" "Completed task" "done" "alta" > /dev/null
+TASK_TAGS="" _td_storage_add_task "$tasks_file3" "First task" "todo" "medium" > /dev/null
+TASK_TAGS="" _td_storage_add_task "$tasks_file3" "Completed task" "done" "high" > /dev/null
 
 empty_col_output=$(COLUMNS=120 _td_board_render "$tasks_file3" 2>&1)
 
