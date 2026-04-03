@@ -1,0 +1,61 @@
+# td-summary - show task counts by status
+# Autoloaded: file body = function body
+
+local -a oneline_opt
+zparseopts -D -E - -oneline=oneline_opt
+
+local use_oneline=0
+(( ${#oneline_opt} )) && use_oneline=1
+
+_td_storage_init
+
+local tasks_file
+tasks_file="$(_td_storage_list_path)"
+
+local list_name
+list_name="$(_td_storage_active_list)"
+
+local output
+output=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+  function run() {
+    var env = $.NSProcessInfo.processInfo.environment;
+    var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+    if (data.tasks.length === 0) return "__EMPTY__";
+    var counts = {};
+    data.tasks.forEach(function(t) {
+      counts[t.status] = (counts[t.status] || 0) + 1;
+    });
+    var lines = [];
+    data.statuses.forEach(function(s) {
+      if (counts[s]) {
+        lines.push(s + "\t" + counts[s]);
+      }
+    });
+    return lines.join("\n");
+  }
+' 2>/dev/null)
+
+if [[ "$output" == "__EMPTY__" ]] || [[ -z "$output" ]]; then
+  _td_success "No tasks in list"
+  return 0
+fi
+
+if (( use_oneline )); then
+  local parts=()
+  while IFS=$'\t' read -r task_status count; do
+    parts+=("${task_status}:${count}")
+  done <<< "$output"
+  printf '%s\n' "${parts[*]}"
+  return 0
+fi
+
+# Default mode: colored status counts
+printf "  %s%s%s\n" "${TD_COLORS[bold]}" "$list_name" "${TD_COLORS[reset]}"
+
+local total=0
+while IFS=$'\t' read -r task_status count; do
+  printf "    %s%s%s: %s\n" "${TD_COLORS[cyan]}" "$task_status" "${TD_COLORS[reset]}" "$count"
+  total=$((total + count))
+done <<< "$output"
+
+printf "    %s%s%s: %s\n" "${TD_COLORS[dim]}" "total" "${TD_COLORS[reset]}" "$total"
