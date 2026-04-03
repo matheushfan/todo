@@ -29,7 +29,7 @@ Build a zero-dependency CLI task manager in pure zsh, progressing from storage e
 
 - [ ] **Phase 9: Schema Evolution & Detail View** - Add refs field to tasks and td-show/td-ref commands for viewing and linking task details
 - [ ] **Phase 10: Archive Storage** - Move completed tasks to separate archive.json, with td-archive command for archiving and querying
-- [ ] **Phase 11: Summary Command** - td-summary with task counts by status and --oneline for prompt integration
+- [x] **Phase 11: Summary Command** - td-summary with task counts by status and --oneline for prompt integration (completed 2026-04-03)
 - [ ] **Phase 12: Interactive Engine Foundation** - td-ui entry point with zcurses-based terminal lifecycle, render loop, and clean exit on all paths
 - [ ] **Phase 13: Interactive Navigation & Actions** - Keyboard navigation (j/k/h/l + arrows), status cycling, done/delete, and open ref URL from interactive view
 - [ ] **Phase 14: Checkbox Mode & Polish** - Checkbox rendering for simple lists, help overlay, and graceful terminal resize handling
@@ -80,7 +80,9 @@ Plans:
   3. Pressing `q` exits cleanly and restores the terminal to its original state
   4. Terminal state is restored on Ctrl+C, SIGTERM, and any abnormal exit path
   5. The interactive view renders using `zsh/curses` module (zcurses), not raw ANSI + read -k
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 12-01-PLAN.md — zcurses engine (init/render/input/cleanup), td-ui command, kanban board rendering
 **UI hint**: yes
 
 ### Phase 13: Interactive Navigation & Actions
@@ -123,7 +125,7 @@ Phases execute in numeric order: 9 → 10 → 11 → 12 → 13 → 14
 | 8. Kanban View & Bulk Operations | v1.0 | 2/2 | Complete | 2026-04-02 |
 | 9. Schema Evolution & Detail View | v1.1 | 0/1 | Planning complete | - |
 | 10. Archive Storage | v1.1 | 0/1 | Planning complete | - |
-| 11. Summary Command | v1.1 | 0/TBD | Not started | - |
-| 12. Interactive Engine Foundation | v1.1 | 0/TBD | Not started | - |
+| 11. Summary Command | v1.1 | 0/TBD | Complete    | 2026-04-03 |
+| 12. Interactive Engine Foundation | v1.1 | 0/1 | Planning complete | - |
 | 13. Interactive Navigation & Actions | v1.1 | 0/TBD | Not started | - |
 | 14. Checkbox Mode & Polish | v1.1 | 0/TBD | Not started | - |
