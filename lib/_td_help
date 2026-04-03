@@ -22,6 +22,8 @@ Commands:
   status rm <name>           Remove a status (no tasks must use it)
   tag add <id> <tag>         Add a tag to a task
   tag rm <id> <tag>          Remove a tag from a task
+  summary                    Show task counts by status
+  summary --oneline          One-line summary for prompt integration
   list                       List all lists
   list create <name>         Create a new list
   list switch <name>         Switch active list
