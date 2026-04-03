@@ -1,0 +1,4 @@
+# td-ui - interactive board view (zcurses)
+# Autoloaded: file body = function body
+
+_td_interactive_run
