@@ -27,6 +27,9 @@ main() {
   # Load kanban board rendering engine
   autoload -Uz _td_board && _td_board
 
+  # Load interactive zcurses engine
+  autoload -Uz _td_interactive && _td_interactive
+
   # Dispatch
   local cmd="${1:-board}"
   shift 2>/dev/null

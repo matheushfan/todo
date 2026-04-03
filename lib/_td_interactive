@@ -1,0 +1,326 @@
+# _td_interactive - zcurses interactive kanban board engine
+# Autoloaded: file body = function body
+
+# Global state for interactive mode
+typeset -ga _TD_UI_STATUSES=()
+typeset -gA _TD_UI_COL_TASKS=()
+typeset -ga _TD_UI_COL_COUNTS=()
+typeset -g _TD_UI_TOTAL_TASKS=0
+typeset -ga _TD_UI_WINDOWS=()
+
+# Load task data via single JXA call into zsh arrays
+# Usage: _td_interactive_load_data <tasks_file>
+_td_interactive_load_data() {
+  local tasks_file="$1"
+
+  [[ -f "$tasks_file" ]] || { _td_error "File not found: $tasks_file"; return 1; }
+
+  # Single JXA call: returns statuses on first line, then __COL_SEP__-separated task blocks
+  # Format: STATUS1\nSTATUS2\n...\n__HDR_SEP__\ntask_lines\n__COL_SEP__\ntask_lines...
+  local raw_output
+  raw_output=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+      var header = data.statuses.join("\n");
+      var blocks = data.statuses.map(function(status) {
+        var tasks = data.tasks.filter(function(t) { return t.status === status; });
+        if (tasks.length === 0) return "";
+        var lines = tasks.map(function(t) {
+          var tagStr = t.tags && t.tags.length > 0 ? t.tags.join(",") : "";
+          var ref = t.id.substring(0, 8);
+          return t.id.substring(0, 8) + "\t" + t.priority + "\t" + tagStr + "\t" + t.text + "\t" + ref;
+        });
+        return lines.join("\n");
+      });
+      return header + "\n__HDR_SEP__\n" + blocks.join("\n__COL_SEP__\n");
+    }
+  ' 2>/dev/null) || { _td_error "Failed to load task data"; return 1; }
+
+  # Split header from body
+  local header_part="${raw_output%%__HDR_SEP__*}"
+  local body_part="${raw_output#*__HDR_SEP__}"
+  # Trim leading newline from body
+  body_part="${body_part#$'\n'}"
+
+  # Parse statuses
+  header_part="${header_part%$'\n'}"
+  _TD_UI_STATUSES=("${(@f)header_part}")
+
+  # Parse task blocks
+  local -a blocks
+  blocks=("${(@s:__COL_SEP__:)body_part}")
+
+  _TD_UI_COL_TASKS=()
+  _TD_UI_COL_COUNTS=()
+  _TD_UI_TOTAL_TASKS=0
+
+  local raw_block row_idx line
+  local -a lines
+  local c
+
+  for (( c=1; c<=${#_TD_UI_STATUSES[@]}; c++ )); do
+    raw_block="${blocks[$c]}"
+    raw_block="${raw_block#$'\n'}"
+    raw_block="${raw_block%$'\n'}"
+
+    if [[ -z "$raw_block" ]]; then
+      _TD_UI_COL_COUNTS[$c]=0
+    else
+      lines=("${(@f)raw_block}")
+      _TD_UI_COL_COUNTS[$c]=${#lines[@]}
+      (( _TD_UI_TOTAL_TASKS += ${#lines[@]} ))
+
+      row_idx=1
+      for line in "${lines[@]}"; do
+        _TD_UI_COL_TASKS[$c,$row_idx]="$line"
+        (( row_idx++ ))
+      done
+    fi
+  done
+}
+
+# Create zcurses windows for layout
+_td_interactive_create_windows() {
+  local num_cols=${#_TD_UI_STATUSES[@]}
+  local col_width col_height col_y col_x
+
+  _TD_UI_WINDOWS=()
+
+  # Header window: row 0, full width, height 1
+  zcurses addwin header 1 $COLUMNS 0 0
+  _TD_UI_WINDOWS+=(header)
+
+  # Column windows
+  col_height=$(( LINES - 2 ))  # header + statusbar
+  col_width=$(( (COLUMNS - 2) / num_cols ))
+
+  # Enforce minimum column width
+  if (( col_width < 15 )); then
+    col_width=15
+  fi
+
+  local i
+  for (( i=1; i<=num_cols; i++ )); do
+    col_y=1
+    col_x=$(( (i - 1) * col_width ))
+    zcurses addwin "col${i}" $col_height $col_width $col_y $col_x
+    _TD_UI_WINDOWS+=("col${i}")
+  done
+
+  # Status bar window: last row, full width, height 1
+  zcurses addwin statusbar 1 $COLUMNS $(( LINES - 1 )) 0
+  _TD_UI_WINDOWS+=(statusbar)
+}
+
+# Cleanup all zcurses windows
+_td_interactive_cleanup_windows() {
+  local delwin
+  for delwin in ${_TD_UI_WINDOWS:*zcurses_windows}; do
+    zcurses delwin "$delwin"
+  done
+}
+
+# Render the kanban board in zcurses windows
+# Usage: _td_interactive_render <list_name>
+_td_interactive_render() {
+  local list_name="$1"
+  local num_cols=${#_TD_UI_STATUSES[@]}
+
+  # Check if terminal is too narrow for columns
+  local col_width=$(( (COLUMNS - 2) / num_cols ))
+  if (( col_width < 15 )); then
+    zcurses clear stdscr
+    local msg="Terminal too narrow"
+    zcurses move stdscr $(( LINES / 2 )) $(( (COLUMNS - ${#msg}) / 2 ))
+    zcurses string stdscr "$msg"
+    zcurses refresh stdscr
+    return
+  fi
+
+  # --- Render header ---
+  zcurses clear header
+  local header_text="$list_name"
+  local header_pad=$(( (COLUMNS - ${#header_text}) / 2 ))
+  zcurses attr header +bold cyan/black
+  zcurses move header 0 $header_pad
+  zcurses string header "$header_text"
+  zcurses attr header -bold white/black
+
+  # --- Render columns ---
+  local i row_count task_line
+  local cell_id cell_pri cell_tags cell_text rest
+  local pri_char
+  local col_h=$(( LINES - 2 ))
+  local max_task_rows=$(( col_h - 3 ))  # border top + status header + border bottom
+
+  for (( i=1; i<=num_cols; i++ )); do
+    zcurses clear "col${i}"
+    zcurses border "col${i}"
+
+    # Status header (centered in column, bold cyan)
+    local status_name="${_TD_UI_STATUSES[$i]}"
+    local status_upper="${status_name:u}"
+    local status_count="${_TD_UI_COL_COUNTS[$i]:-0}"
+    local status_label="${status_upper} (${status_count})"
+    local inner_width=$(( col_width - 2 ))
+    local label_pad=$(( (inner_width - ${#status_label}) / 2 ))
+    (( label_pad < 1 )) && label_pad=1
+
+    zcurses attr "col${i}" +bold cyan/black
+    zcurses move "col${i}" 1 $label_pad
+    zcurses string "col${i}" "$status_label"
+    zcurses attr "col${i}" -bold white/black
+
+    # Render tasks
+    row_count=${_TD_UI_COL_COUNTS[$i]:-0}
+    local r
+    for (( r=1; r<=row_count && r<=max_task_rows; r++ )); do
+      task_line="${_TD_UI_COL_TASKS[$i,$r]}"
+      [[ -z "$task_line" ]] && continue
+
+      # Parse: id\tpriority\ttags\ttext\tref
+      cell_id="${task_line%%	*}"
+      rest="${task_line#*	}"
+      cell_pri="${rest%%	*}"
+      rest="${rest#*	}"
+      cell_tags="${rest%%	*}"
+      rest="${rest#*	}"
+      cell_text="${rest%%	*}"
+
+      # Priority indicator with color
+      pri_char=" "
+      case "$cell_pri" in
+        alta)
+          pri_char="!"
+          zcurses attr "col${i}" +bold red/black
+          ;;
+        media)
+          pri_char="~"
+          zcurses attr "col${i}" +bold yellow/black
+          ;;
+        baixa)
+          pri_char="."
+          zcurses attr "col${i}" green/black
+          ;;
+      esac
+
+      local task_row=$(( r + 1 ))  # row 0=border, 1=header, 2+=tasks
+      zcurses move "col${i}" $task_row 1
+      zcurses string "col${i}" "$pri_char"
+      zcurses attr "col${i}" -bold white/black
+
+      # ID (dim)
+      zcurses attr "col${i}" dim
+      zcurses string "col${i}" " ${cell_id:0:8}"
+      zcurses attr "col${i}" -dim white/black
+
+      # Text (truncated to fit)
+      local prefix_len=11  # "! ABCD1234 " = 1+1+8+1
+      local max_text=$(( inner_width - prefix_len ))
+      (( max_text < 1 )) && max_text=1
+      local display_text="$cell_text"
+      if (( ${#display_text} > max_text )); then
+        display_text="${display_text:0:$((max_text - 1))}~"
+      fi
+      zcurses string "col${i}" " $display_text"
+    done
+
+    # Show overflow indicator if more tasks than visible rows
+    if (( row_count > max_task_rows )); then
+      local overflow_msg="... +$(( row_count - max_task_rows )) more"
+      zcurses attr "col${i}" dim
+      zcurses move "col${i}" $(( max_task_rows + 2 )) 1
+      zcurses string "col${i}" "$overflow_msg"
+      zcurses attr "col${i}" -dim white/black
+    fi
+
+    # Show (empty) if no tasks
+    if (( row_count == 0 )); then
+      zcurses attr "col${i}" dim
+      zcurses move "col${i}" 2 1
+      zcurses string "col${i}" "(empty)"
+      zcurses attr "col${i}" -dim white/black
+    fi
+  done
+
+  # --- Render status bar ---
+  zcurses clear statusbar
+  zcurses attr statusbar reverse
+  local bar_text=" ${list_name} | ${_TD_UI_TOTAL_TASKS} tasks | q:quit "
+  # Pad to full width
+  local bar_pad=$(( COLUMNS - ${#bar_text} ))
+  (( bar_pad < 0 )) && bar_pad=0
+  zcurses move statusbar 0 0
+  zcurses string statusbar "${bar_text}${(l:$bar_pad:: :)}"
+  zcurses attr statusbar -reverse
+
+  # Refresh all windows
+  local -a refresh_args=(header)
+  for (( i=1; i<=num_cols; i++ )); do
+    refresh_args+=("col${i}")
+  done
+  refresh_args+=(statusbar)
+  zcurses refresh "${refresh_args[@]}"
+}
+
+# Main engine entry point
+_td_interactive_run() {
+  # TTY gate (Pitfall 8)
+  [[ -t 0 ]] && [[ -t 1 ]] || {
+    _td_error "Interactive mode requires a terminal"
+    return 1
+  }
+
+  # Terminal size check
+  if (( LINES < 10 || COLUMNS < 40 )); then
+    _td_error "Terminal too small (min 40x10)"
+    return 1
+  fi
+
+  # Load data
+  _td_storage_init || return 1
+  local tasks_file list_name
+  tasks_file="$(_td_storage_list_path)" || return 1
+  list_name="$(_td_storage_active_list)"
+
+  _td_interactive_load_data "$tasks_file" || return 1
+
+  # zcurses lifecycle
+  zmodload zsh/curses || {
+    _td_error "zcurses module not available"
+    return 1
+  }
+
+  {
+    zcurses init
+    echoti civis  # hide cursor
+    zcurses clear stdscr redraw
+    zcurses refresh stdscr
+
+    # Create windows
+    _td_interactive_create_windows
+
+    # Initial render
+    _td_interactive_render "$list_name"
+
+    # Input loop
+    local key kkey
+    zcurses timeout stdscr 200  # 200ms polling for SIGWINCH workaround
+
+    while true; do
+      if zcurses input stdscr key kkey; then
+        case $key$kkey in
+          q) break ;;
+          # Phase 13 will add: UP/DOWN/LEFT/RIGHT/j/k/h/l/s/d/x/o
+        esac
+      fi
+      # Timeout branch: check resize flag (Phase 14 will fully implement)
+    done
+  } always {
+    # Cleanup all windows
+    _td_interactive_cleanup_windows
+    echoti cnorm  # show cursor
+    zcurses end   # restore terminal
+  }
+}
