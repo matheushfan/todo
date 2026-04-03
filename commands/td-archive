@@ -1,0 +1,191 @@
+# td-archive - archive completed tasks and manage archive
+# Autoloaded: file body = function body
+
+_archive_do() {
+  _td_storage_init
+
+  local tasks_file
+  tasks_file="$(_td_storage_list_path)"
+
+  # Read done tasks from active file via JXA
+  local done_tasks
+  done_tasks=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+      var doneStatus = data.statuses[data.statuses.length - 1];
+      var matched = data.tasks.filter(function(t) { return t.status === doneStatus; });
+      if (matched.length === 0) return "__NONE__";
+      return JSON.stringify(matched);
+    }
+  ' 2>/dev/null)
+
+  [[ "$done_tasks" == "__NONE__" || -z "$done_tasks" ]] && {
+    _td_success "No completed tasks to archive"
+    return 0
+  }
+
+  # Step A: Append to archive.json first (crash-safe ordering)
+  local archive_file
+  archive_file="$(_td_storage_archive_path)"
+  local list_name
+  list_name="$(_td_storage_active_list)"
+
+  local new_archive
+  new_archive=$(DONE_TASKS="$done_tasks" LIST_NAME="$list_name" EXISTING="$(cat "$archive_file" 2>/dev/null || echo '')" osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var existRaw = env.objectForKey("EXISTING").js;
+      var listName = env.objectForKey("LIST_NAME").js;
+      var archive;
+      if (existRaw && existRaw.length > 2) {
+        archive = JSON.parse(existRaw);
+      } else {
+        archive = {name: listName, tasks: []};
+      }
+      var incoming = JSON.parse(env.objectForKey("DONE_TASKS").js);
+      var now = new Date().toISOString();
+      incoming.forEach(function(t) { t.archived_at = now; });
+      archive.tasks = archive.tasks.concat(incoming);
+      return JSON.stringify(archive, null, 2);
+    }
+  ' 2>/dev/null) || { _td_error "Failed to build archive"; return 1; }
+
+  _td_storage_atomic_write "$archive_file" "$new_archive" || {
+    _td_error "Failed to write archive"
+    return 1
+  }
+
+  # Step B: Remove archived tasks from tasks.json
+  _td_storage_modify "$tasks_file" '
+    var doneStatus = data.statuses[data.statuses.length - 1];
+    data.tasks = data.tasks.filter(function(t) { return t.status !== doneStatus; });
+  '
+
+  # Count and report
+  local count
+  count=$(DONE_TASKS="$done_tasks" osascript -l JavaScript -e '
+    function run() {
+      return JSON.parse($.NSProcessInfo.processInfo.environment.objectForKey("DONE_TASKS").js).length;
+    }
+  ' 2>/dev/null)
+  _td_success "Archived ${count} task(s)"
+}
+
+_archive_ls() {
+  local archive_file
+  archive_file="$(_td_storage_archive_path)"
+
+  [[ -f "$archive_file" ]] || {
+    _td_success "No archived tasks"
+    return 0
+  }
+
+  local output
+  output=$(JSON_DATA="$(cat "$archive_file")" osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+      if (!data.tasks || data.tasks.length === 0) return "__EMPTY__";
+      var lines = data.tasks.map(function(t) {
+        var tagStr = t.tags && t.tags.length > 0 ? t.tags.join(",") : "";
+        return t.id.substring(0, 8) + "\t" + t.status + "\t" + t.priority + "\t" + tagStr + "\t" + t.text;
+      });
+      return lines.join("\n");
+    }
+  ' 2>/dev/null)
+
+  if [[ "$output" == "__EMPTY__" ]] || [[ -z "$output" ]]; then
+    _td_success "No archived tasks"
+    return 0
+  fi
+
+  printf "  ${TD_COLORS[dim]}%-10s %-8s %-10s %-14s %s${TD_COLORS[reset]}\n" \
+    "ID" "Status" "Priority" "Tags" "Title"
+
+  while IFS=$'\t' read -r id task_status priority tags title; do
+    printf "  ${TD_COLORS[dim]}%-10s %-8s %-10s %-14s %s${TD_COLORS[reset]}\n" \
+      "$id" "$task_status" "$priority" "$tags" "$title"
+  done <<< "$output"
+}
+
+_archive_undo() {
+  local id_prefix="$1"
+
+  [[ -z "$id_prefix" ]] && {
+    _td_error "Usage: todo archive undo <task-id>"
+    return 1
+  }
+
+  _td_storage_init
+
+  local archive_file
+  archive_file="$(_td_storage_archive_path)"
+
+  [[ -f "$archive_file" ]] || {
+    _td_error "No archive found"
+    return 1
+  }
+
+  local tasks_file
+  tasks_file="$(_td_storage_list_path)"
+
+  # Resolve task ID from archive file
+  local task_id
+  task_id="$(_td_resolve_task_id "$archive_file" "$id_prefix")" || return 1
+
+  # Read task from archive (without archived_at)
+  local task_json
+  task_json=$(TASK_ID="$task_id" JSON_DATA="$(cat "$archive_file")" osascript -l JavaScript -e '
+    function run() {
+      var env = $.NSProcessInfo.processInfo.environment;
+      var data = JSON.parse(env.objectForKey("JSON_DATA").js);
+      var tid = env.objectForKey("TASK_ID").js;
+      var task = data.tasks.filter(function(t) { return t.id === tid; })[0];
+      if (!task) return "__NOT_FOUND__";
+      delete task.archived_at;
+      task.updated = new Date().toISOString();
+      return JSON.stringify(task);
+    }
+  ' 2>/dev/null)
+
+  [[ "$task_json" == "__NOT_FOUND__" || -z "$task_json" ]] && {
+    _td_error "Task not found in archive"
+    return 1
+  }
+
+  # Step A: Add task to active tasks.json first
+  export RESTORED_TASK="$task_json"
+  _td_storage_modify "$tasks_file" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var task = JSON.parse(env.objectForKey("RESTORED_TASK").js);
+    data.tasks.push(task);
+  '
+  local rc=$?
+  unset RESTORED_TASK
+
+  (( rc != 0 )) && { _td_error "Failed to restore task"; return 1; }
+
+  # Step B: Remove task from archive
+  export TASK_ID="$task_id"
+  _td_storage_modify "$archive_file" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var tid = env.objectForKey("TASK_ID").js;
+    data.tasks = data.tasks.filter(function(t) { return t.id !== tid; });
+  '
+  rc=$?
+  unset TASK_ID
+
+  (( rc == 0 )) && _td_success "Restored task ${task_id:0:8} to active list"
+  return $rc
+}
+
+local subcmd="${1:-}"
+shift 2>/dev/null
+
+case "$subcmd" in
+  "")     _archive_do ;;
+  ls)     _archive_ls ;;
+  undo)   _archive_undo "$@" ;;
+  *)      _td_error "Unknown archive command '$subcmd'. Use: ls, undo"; return 1 ;;
+esac
