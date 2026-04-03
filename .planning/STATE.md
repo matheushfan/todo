@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: verifying
 stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-04-02T23:49:27.916Z"
+last_updated: "2026-04-02T23:52:43.351Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 8
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-04-02)
 
 ## Current Position
 
-Phase: 08 (kanban-view-bulk-operations) — EXECUTING
-Plan: 2 of 2
+Phase: 08
+Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-04-02
+Last activity: 2026-04-03 - Completed quick task 260403-mb1: Rename priority tags to English
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -102,6 +102,12 @@ Recent decisions affecting current work:
 ### Pending Todos
 
 None yet.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260403-mb1 | Rename priority tags to English (alta/média/baixa → high/medium/low) | 2026-04-03 | 7654e05 | [260403-mb1-rename-priority-tags-to-english](./quick/260403-mb1-rename-priority-tags-to-english/) |
 
 ### Blockers/Concerns
 
