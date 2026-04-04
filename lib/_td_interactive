@@ -152,7 +152,7 @@ _td_interactive_render_checkbox() {
 
   # Render each task
   local r task_line cell_id cell_pri cell_tags cell_text cell_ref cell_status rest
-  local checkbox pri_char is_selected display_text full_line line_pad
+  local checkbox pri_char is_selected display_text full_line line_pad render_row overflow_msg
   local max_text=$(( COLUMNS - 8 ))
   (( max_text < 1 )) && max_text=1
 
@@ -196,7 +196,7 @@ _td_interactive_render_checkbox() {
     is_selected=0
     (( r == _TD_UI_CHECKBOX_SEL )) && is_selected=1
 
-    local render_row=$(( r + 1 ))  # row 2+ (after header + separator)
+    render_row=$(( r + 1 ))  # row 2+ (after header + separator)
 
     if (( is_selected )); then
       zcurses attr stdscr reverse
@@ -244,7 +244,7 @@ _td_interactive_render_checkbox() {
 
   # Overflow indicator
   if (( _TD_UI_CHECKBOX_COUNT > max_rows )); then
-    local overflow_msg="... +$(( _TD_UI_CHECKBOX_COUNT - max_rows )) more"
+    overflow_msg="... +$(( _TD_UI_CHECKBOX_COUNT - max_rows )) more"
     zcurses attr stdscr dim
     zcurses move stdscr $(( max_rows + 2 )) 2
     zcurses string stdscr "$overflow_msg"
@@ -360,14 +360,14 @@ _td_interactive_nav_up() {
 _td_interactive_nav_right() {
   local total=${#_TD_UI_STATUSES[@]}
   local start=$_TD_UI_SEL_COL
-  local c
+  local c check new_count
 
   for (( c=1; c<total; c++ )); do
-    local check=$(( (start - 1 + c) % total + 1 ))
+    check=$(( (start - 1 + c) % total + 1 ))
     if (( ${_TD_UI_COL_COUNTS[$check]:-0} > 0 )); then
       _TD_UI_SEL_COL=$check
       # Clamp row to new column's task count
-      local new_count=${_TD_UI_COL_COUNTS[$check]}
+      new_count=${_TD_UI_COL_COUNTS[$check]}
       if (( _TD_UI_SEL_ROW > new_count )); then
         _TD_UI_SEL_ROW=$new_count
       fi
@@ -381,14 +381,14 @@ _td_interactive_nav_right() {
 _td_interactive_nav_left() {
   local total=${#_TD_UI_STATUSES[@]}
   local start=$_TD_UI_SEL_COL
-  local c
+  local c check new_count
 
   for (( c=1; c<total; c++ )); do
-    local check=$(( (start - 1 - c + total) % total + 1 ))
+    check=$(( (start - 1 - c + total) % total + 1 ))
     if (( ${_TD_UI_COL_COUNTS[$check]:-0} > 0 )); then
       _TD_UI_SEL_COL=$check
       # Clamp row to new column's task count
-      local new_count=${_TD_UI_COL_COUNTS[$check]}
+      new_count=${_TD_UI_COL_COUNTS[$check]}
       if (( _TD_UI_SEL_ROW > new_count )); then
         _TD_UI_SEL_ROW=$new_count
       fi
@@ -704,9 +704,9 @@ _td_interactive_action_status() {
   # Follow the task to its new column
   _TD_UI_SEL_COL=$next_col
   # Find the task in the new column
-  local r found=0
+  local r line found=0
   for (( r=1; r<=${_TD_UI_COL_COUNTS[$next_col]:-0}; r++ )); do
-    local line="${_TD_UI_COL_TASKS[$next_col,$r]}"
+    line="${_TD_UI_COL_TASKS[$next_col,$r]}"
     if [[ "${line%%	*}" == "$task_id" ]]; then
       _TD_UI_SEL_ROW=$r
       found=1
@@ -807,7 +807,8 @@ _td_interactive_render() {
   # --- Render columns ---
   local i row_count task_line
   local cell_id cell_pri cell_tags cell_text rest
-  local pri_char
+  local pri_char r is_selected task_row prefix_len max_text display_text full_line line_pad overflow_msg
+  local status_name status_upper status_count status_label inner_width label_pad
   local col_h=$(( LINES - 2 ))
   local max_task_rows=$(( col_h - 3 ))  # border top + status header + border bottom
 
@@ -816,12 +817,12 @@ _td_interactive_render() {
     zcurses border "col${i}"
 
     # Status header (centered in column, bold cyan)
-    local status_name="${_TD_UI_STATUSES[$i]}"
-    local status_upper="${status_name:u}"
-    local status_count="${_TD_UI_COL_COUNTS[$i]:-0}"
-    local status_label="${status_upper} (${status_count})"
-    local inner_width=$(( col_width - 2 ))
-    local label_pad=$(( (inner_width - ${#status_label}) / 2 ))
+    status_name="${_TD_UI_STATUSES[$i]}"
+    status_upper="${status_name:u}"
+    status_count="${_TD_UI_COL_COUNTS[$i]:-0}"
+    status_label="${status_upper} (${status_count})"
+    inner_width=$(( col_width - 2 ))
+    label_pad=$(( (inner_width - ${#status_label}) / 2 ))
     (( label_pad < 1 )) && label_pad=1
 
     zcurses attr "col${i}" +bold cyan/black
@@ -831,7 +832,6 @@ _td_interactive_render() {
 
     # Render tasks
     row_count=${_TD_UI_COL_COUNTS[$i]:-0}
-    local r is_selected
     for (( r=1; r<=row_count && r<=max_task_rows; r++ )); do
       task_line="${_TD_UI_COL_TASKS[$i,$r]}"
       [[ -z "$task_line" ]] && continue
@@ -851,7 +851,7 @@ _td_interactive_render() {
         is_selected=1
       fi
 
-      local task_row=$(( r + 1 ))  # row 0=border, 1=header, 2+=tasks
+      task_row=$(( r + 1 ))  # row 0=border, 1=header, 2+=tasks
 
       if (( is_selected )); then
         # Selected task: reverse video for entire row, skip per-field colors
@@ -868,17 +868,17 @@ _td_interactive_render() {
         zcurses move "col${i}" $task_row 1
 
         # Build the full line and pad to inner_width
-        local prefix_len=11  # "! ABCD1234 " = 1+1+8+1
-        local max_text=$(( inner_width - prefix_len ))
+        prefix_len=11  # "! ABCD1234 " = 1+1+8+1
+        max_text=$(( inner_width - prefix_len ))
         (( max_text < 1 )) && max_text=1
-        local display_text="$cell_text"
+        display_text="$cell_text"
         if (( ${#display_text} > max_text )); then
           display_text="${display_text:0:$((max_text - 1))}~"
         fi
 
-        local full_line="${pri_char} ${cell_id:0:8} ${display_text}"
+        full_line="${pri_char} ${cell_id:0:8} ${display_text}"
         # Pad to fill the column width for full reverse highlight
-        local line_pad=$(( inner_width - ${#full_line} ))
+        line_pad=$(( inner_width - ${#full_line} ))
         (( line_pad < 0 )) && line_pad=0
         zcurses string "col${i}" "${full_line}${(l:$line_pad:: :)}"
 
@@ -911,10 +911,10 @@ _td_interactive_render() {
         zcurses attr "col${i}" -dim white/black
 
         # Text (truncated to fit)
-        local prefix_len=11  # "! ABCD1234 " = 1+1+8+1
-        local max_text=$(( inner_width - prefix_len ))
+        prefix_len=11  # "! ABCD1234 " = 1+1+8+1
+        max_text=$(( inner_width - prefix_len ))
         (( max_text < 1 )) && max_text=1
-        local display_text="$cell_text"
+        display_text="$cell_text"
         if (( ${#display_text} > max_text )); then
           display_text="${display_text:0:$((max_text - 1))}~"
         fi
@@ -924,7 +924,7 @@ _td_interactive_render() {
 
     # Show overflow indicator if more tasks than visible rows
     if (( row_count > max_task_rows )); then
-      local overflow_msg="... +$(( row_count - max_task_rows )) more"
+      overflow_msg="... +$(( row_count - max_task_rows )) more"
       zcurses attr "col${i}" dim
       zcurses move "col${i}" $(( max_task_rows + 2 )) 1
       zcurses string "col${i}" "$overflow_msg"
