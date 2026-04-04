@@ -1024,11 +1024,18 @@ _td_interactive_run() {
     fi
 
     # Input loop
-    local key kkey
+    local key kkey _input_win
     zcurses timeout stdscr 200  # 200ms polling for resize detection
 
     while true; do
-      if zcurses input stdscr key kkey; then
+      # When help overlay is visible, read input from helpwin to keep it on top
+      _input_win=stdscr
+      if (( _TD_UI_HELP_VISIBLE )); then
+        _input_win=helpwin
+        zcurses timeout helpwin 200
+      fi
+
+      if zcurses input $_input_win key kkey; then
         # Dismiss help overlay on any key (except ? which toggles)
         if (( _TD_UI_HELP_VISIBLE )) && [[ "$key$kkey" != '?' ]]; then
           _td_interactive_hide_help
