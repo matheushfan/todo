@@ -8,24 +8,10 @@ CLI de gerenciamento de tasks para o terminal, escrito 100% em shell/zsh puro se
 
 Gerenciar tasks direto no terminal de forma rápida e visual, sem sair do fluxo de trabalho.
 
-## Current Milestone: v1.1 Interactive Experience
-
-**Goal:** Transformar o td de comandos avulsos para uma experiência interativa e visual no terminal, com detail view, archive e UI refinada.
-
-**Target features:**
-- Modo interativo persistente (board/list com refresh, zsh read/zle)
-- Detail view de task (todos os campos, metadata, refs)
-- Campo URL/ref genérico por task (Linear, GitHub, qualquer link)
-- Modo checkbox (todo/done) para listas simples
-- Comando td summary/pending (opt-in para .zshrc)
-- Archive de tasks concluídas (mover sem deletar, consulta posterior)
-- UI/UX refinada — navegação por teclas, ciclar status, layout polido
-- Melhorias baseadas em produtos validados (kanban/todo best practices)
-
 ## Current State
 
-**Shipped:** v1.0 MVP (2026-04-03)
-**LOC:** ~2,636 zsh | **Commits:** 43 | **Files:** 55
+**Shipped:** v0.2 Interactive Experience (2026-04-03)
+**LOC:** ~3,062 zsh | **Commits:** 50 | **Files:** 60+
 
 Fully functional CLI with:
 - CRUD completo (add, edit, rm, ls)
@@ -41,15 +27,15 @@ Fully functional CLI with:
 
 ### Validated
 
-- ✓ Criar, editar e remover tasks via CLI — v1.0
-- ✓ Múltiplas listas com fácil switch entre elas — v1.0
-- ✓ Status customizáveis por lista — v1.0
-- ✓ Visualização kanban inline (colunas lado a lado) — v1.0
-- ✓ Prioridades high/medium/low com cores (red/yellow/green) — v1.0
-- ✓ Tags/labels livres nas tasks — v1.0
-- ✓ Filtro por status e prioridade — v1.0
-- ✓ Storage centralizado em ~/.todolist/ com namespaces — v1.0
-- ✓ Zero dependências externas — shell/zsh puro — v1.0
+- ✓ Criar, editar e remover tasks via CLI — v0.1
+- ✓ Múltiplas listas com fácil switch entre elas — v0.1
+- ✓ Status customizáveis por lista — v0.1
+- ✓ Visualização kanban inline (colunas lado a lado) — v0.1
+- ✓ Prioridades high/medium/low com cores (red/yellow/green) — v0.1
+- ✓ Tags/labels livres nas tasks — v0.1
+- ✓ Filtro por status e prioridade — v0.1
+- ✓ Storage centralizado em ~/.todolist/ com namespaces — v0.1
+- ✓ Zero dependências externas — shell/zsh puro — v0.1
 
 ### Active
 
@@ -119,4 +105,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-03 after v1.1 milestone start*
+*Last updated: 2026-04-03 after v0.2 milestone complete*
