@@ -3,29 +3,41 @@
 A kanban-style task manager that lives in your terminal. Pure zsh, zero dependencies.
 
 ```
-┌─── todo ──────────────┬──── doing ─────────────┬──── done ──────────────┐
-│ Fix auth middleware    │ Build payment API      │ Setup CI pipeline      │
-│ [high]                │ [medium]               │ [low]                  │
-│                       │ Write API docs         │ Design landing page    │
-│                       │ [low] #docs            │ [medium] #design       │
-└───────────────────────┴────────────────────────┴────────────────────────┘
+  main   19 todo · 3 doing · 4 done                       26 tasks · 2 lists
+  TODO                 19 │  DOING                 3 │  DONE                 4
+──────────────────────────┼──────────────────────────┼──────────────────────────
+ ▲ Fix auth token refresh │ ▲ Refactor storage layer │ ✓ Storage lock design
+   4c1a  api  6h  ↗       │   2a3f  api db  3h       │   aa71  core  1d
+ ● Write migration notes  │ ● Theme engine plus 256… │ ✓ Width primitives
+   9b02  docs  4h         │   b8c7  ui  3h           │   c604  core  1d
+ ▾ Sidebar list counts    │                          │
+   77a4  ui  2d           │                          │
+──────────────────────────┴──────────────────────────┴──────────────────────────
 ```
+
+Priority reads as a scale — `▲` high, `●` medium, `▾` low — and falls back to
+`!` `~` `.` where Unicode is not available.
 
 ## Features
 
-- **Interactive board** — zcurses-based TUI with keyboard navigation (`td ui`)
-- **Kanban board** — inline columns per status, right in the terminal
+- **Kanban board** — columns per status, right in the terminal
+- **Interactive board** — TUI with keyboard navigation (`todo ui`)
 - **Checkbox mode** — simple `[ ]/[x]` view for todo/done lists
 - **Multiple lists** — one per project/context, switch with a single command
-- **Custom statuses** — each list defines its own workflow (not just todo/doing/done)
-- **Priorities** — high/medium/low with color coding (red/yellow/green)
-- **Tags** — free-form labels on any task
-- **Filters** — by status, priority
-- **Detail view** — see all task fields with `td show`
-- **Reference URLs** — attach Linear, GitHub, or any link to a task
-- **Archive** — move completed tasks to archive without deleting
-- **Summary** — quick pending task count for prompt integration
-- **Bulk operations** — done/move/rm multiple tasks at once
+- **Custom statuses** — each list defines its own workflow
+- **Priorities, tags and filters** — by status or priority
+- **Detail view** — every field of a task with `todo show`
+- **Reference URLs** — attach Linear, GitHub or any link; clickable where the
+  terminal supports OSC-8 hyperlinks
+- **Archive** — set completed tasks aside without deleting them
+- **Summary** — proportional bars, plus a compact form for your shell prompt
+- **Bulk operations** — done/move/rm several tasks at once
+- **Safe under concurrency** — writes are locked, so two terminals cannot
+  silently clobber each other
+- **Themeable** — `nocturne` (dark) and `paper` (light), degrading 24-bit →
+  256 → 16 → no colour, and honouring `NO_COLOR`
+- **Correct with any text** — accents, CJK and emoji stay aligned, because
+  columns are measured in display width rather than characters
 - **Zero dependencies** — 100% zsh + macOS built-ins. No Python, no Node, no Go.
 
 ## Install
@@ -56,7 +68,7 @@ export PATH="$HOME/.todo-cli/bin:$PATH"
 
 ```bash
 todo version
-# todo v0.2.0
+# todo v0.3.0
 ```
 
 ## Usage
@@ -137,8 +149,9 @@ Archived tasks are stored separately — they don't appear in `ls`, `board`, or 
 ### Summary
 
 ```bash
-todo summary                                  # task counts by status
-todo summary --oneline                        # compact (for shell prompt)
+todo summary                                  # bars per status, % complete
+todo summary --oneline                        # todo:19 doing:3 done:4
+todo summary --glyph                          # main ▲19 ●3 ✓4
 ```
 
 Add to `~/.zshrc` for startup info:
@@ -146,6 +159,9 @@ Add to `~/.zshrc` for startup info:
 ```bash
 todo summary --oneline 2>/dev/null
 ```
+
+The compact forms never emit colour unless `CLICOLOR_FORCE` is set, so they are
+safe to embed in a prompt.
 
 ### Multiple Lists
 
@@ -205,6 +221,21 @@ Data lives in `~/.todolist/` (override with `TODOLIST_DATA` env var):
 
 JSON flat files. Human-readable. Back up by copying the directory.
 
+## Customization
+
+| Variable | Effect |
+|----------|--------|
+| `TODOLIST_DATA` | Where data lives (default `~/.todolist`) |
+| `TD_THEME` | `nocturne` (dark, default) or `paper` (light) |
+| `TD_COLOR_DEPTH` | Force `24`, `8`, `4` or `0`; otherwise detected |
+| `TD_ASCII` | Set to any value to draw with ASCII instead of Unicode |
+| `NO_COLOR` | Honoured — disables colour entirely |
+| `CLICOLOR_FORCE` | Keep colour even when piping |
+| `TD_LOCK_TIMEOUT` | Seconds to wait for a write lock (default 10) |
+
+Colour degrades on its own: 24-bit → 256 → 16 → none. Apple's Terminal.app is
+pinned to 256 because it advertises truecolor it cannot actually render.
+
 ## Requirements
 
 - **macOS** with zsh 5.9+ (default since Catalina)
@@ -212,11 +243,19 @@ JSON flat files. Human-readable. Back up by copying the directory.
 
 ## How it works
 
-- Entry point: `bin/todo` (~40 lines) — sets up autoload, dispatches subcommands
+- Entry point: `bin/todo` — sets up autoload, installs the lock traps, dispatches subcommands
 - Commands: `commands/td-*` — one file per command, loaded on demand via zsh `fpath`
-- Libraries: `lib/_td_*` — storage (JXA JSON engine), colors (ANSI), board (kanban renderer), interactive (zcurses TUI)
+- Libraries: `lib/_td_*` — `_td_ui` (measurement, theme, glyphs), `_td_storage`
+  (JXA JSON engine), `_td_lock` (write locking), `_td_board` (kanban renderer),
+  `_td_interactive` (TUI)
 - Storage: `osascript -l JavaScript` (JXA) for JSON parsing — built into every Mac since 2014
-- Interactive: `zsh/curses` (zcurses) module for TUI — built into macOS zsh
+
+Two details worth knowing if you read the source. Text is measured with zsh's
+own display width, `${(m)#s}`, so CJK counts two columns and combining marks
+count zero — that is why the board stays aligned through emoji and accents.
+And the rendering helpers return through `REPLY` rather than stdout, because
+`$(...)` forks a subshell per call, which cost 2ms per cell and made a large
+board take a full second to lay out.
 
 No external tools. No `jq`. No `python`. No `node`. Just zsh and what macOS ships with.
 
@@ -231,7 +270,7 @@ zsh tests/test_board.zsh
 zsh tests/test_storage.zsh
 ```
 
-275+ tests across 12 suites.
+346 tests across 14 suites.
 
 ## Contributing
 

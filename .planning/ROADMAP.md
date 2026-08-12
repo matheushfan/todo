@@ -8,6 +8,7 @@ Build a zero-dependency CLI task manager in pure zsh, progressing from storage e
 
 - ✅ **v0.1 MVP** — Phases 1-8 (shipped 2026-04-03) — [Archive](./milestones/v0.1-ROADMAP.md)
 - ✅ **v0.2 Interactive Experience** — Phases 9-14 (shipped 2026-04-03) — [Archive](./milestones/v0.2-ROADMAP.md)
+- 🚧 **v0.3 Correctness & Visual Overhaul** — Phases 15-18 (in progress, started 2026-08-11)
 
 ## Phases
 
@@ -34,6 +35,21 @@ Build a zero-dependency CLI task manager in pure zsh, progressing from storage e
 - [x] Phase 12: Interactive Engine Foundation (1/1 plans)
 - [x] Phase 13: Interactive Navigation & Actions (2/2 plans)
 - [x] Phase 14: Checkbox Mode & Polish (2/2 plans)
+
+</details>
+
+<details open>
+<summary>🚧 v0.3 Correctness & Visual Overhaul (Phases 15-18)</summary>
+
+Triggered by an audit that found four user-facing bugs plus silent data loss
+under concurrency, alongside a request to rebuild the UI to the standard of
+[hunk](https://github.com/modem-dev/hunk).
+
+- [x] Phase 15: Storage locking — stop silent write loss (1/1 plans)
+- [x] Phase 16: Command correctness — ls columns, done semantics, tag parsing, show (1/1 plans)
+- [x] Phase 17: Shared rendering core + static board redesign (1/1 plans)
+- [x] Phase 18: `ls` and `summary` redesign (1/1 plans)
+- [ ] Phase 19: Interactive TUI on the raw-ANSI core (not started)
 
 </details>
 

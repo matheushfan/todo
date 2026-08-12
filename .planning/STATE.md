@@ -1,125 +1,86 @@
 ---
 gsd_state_version: 1.0
-milestone: v0.2
-milestone_name: Interactive Experience
-status: verifying
-stopped_at: Completed 14-02-PLAN.md
-last_updated: "2026-04-03T23:10:35.466Z"
-last_activity: 2026-04-03
+milestone: v0.3
+milestone_name: Correctness & Visual Overhaul
+status: in-progress
+stopped_at: Completed phase 18 (ls + summary redesign)
+last_updated: "2026-08-11"
+last_activity: 2026-08-11
 progress:
-  total_phases: 6
+  total_phases: 5
   completed_phases: 4
-  total_plans: 8
-  completed_plans: 6
-  percent: 0
+  total_plans: 5
+  completed_plans: 4
+  percent: 80
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-02)
+See: .planning/PROJECT.md
 
 **Core value:** Gerenciar tasks direto no terminal de forma rapida e visual, sem sair do fluxo de trabalho.
-**Current focus:** Phase 08 — kanban-view-bulk-operations
+**Current focus:** Phase 19 — interactive TUI rebuilt on the raw-ANSI core
 
 ## Current Position
 
-Phase: 14
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-04-03
+Phase: 19 (not started)
+Status: phases 15-18 complete and committed; TUI still runs on the old zcurses engine
+Last activity: 2026-08-11
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [████████░░] 80%
 
-## Performance Metrics
+## What Shipped in v0.3 So Far
 
-**Velocity:**
-
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| - | - | - | - |
-
-**Recent Trend:**
-
-- Last 5 plans: -
-- Trend: -
-
-*Updated after each plan completion*
-| Phase 01 P01 | 3min | 2 tasks | 8 files |
-| Phase 02 P01 | 2min | 2 tasks | 3 files |
-| Phase 03 P01 | 2min | 3 tasks | 4 files |
-| Phase 03 P02 | 2min | 2 tasks | 4 files |
-| Phase 04 P01 | 2min | 2 tasks | 8 files |
-| Phase 05 P01 | 2min | 2 tasks | 4 files |
-| Phase 06 P01 | 2min | 2 tasks | 6 files |
-| Phase 06 P02 | 2min | 2 tasks | 3 files |
-| Phase 07 P01 | 2min | 2 tasks | 5 files |
-| Phase 08 P02 | 3min | 2 tasks | 2 files |
-| Phase 08 P01 | 4min | 2 tasks | 6 files |
-| Phase 13 P01 | 2min | 1 tasks | 1 files |
-| Phase 14 P01 | 2min | 2 tasks | 1 files |
-| Phase 14 P02 | 3min | 1 tasks | 3 files |
+- **Storage locking** (`lib/_td_lock`). Concurrent writes used to lose 94-95% of
+  tasks silently, because the temp+mv write kept the file valid JSON so nothing
+  ever surfaced the loss. Measured 20 parallel adds: 1 survivor before, 20 after.
+- **Four user-facing bug fixes**: `ls` rendering the title under the Tags column
+  for every untagged task; `done` meaning "last status" rather than "done";
+  `add -t a,b` (the README's own example) being rejected; `show` scrambling
+  fields when the text held a TAB.
+- **`lib/_td_ui`**, one measurement/theme/glyph core shared by every view.
+- **Redesigned static board, `ls` and `summary`**, laid out to exactly 80
+  columns, aligned through CJK/emoji/accents.
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- [Roadmap]: JXA (osascript) chosen as JSON engine -- built-in macOS, no deps
-- [Roadmap]: Atomic write-to-temp + mv pattern for all file writes
-- [Roadmap]: zsh autoload/fpath pattern for modular CLI structure
-- [Phase 01]: Capture $0 at script top level before main() wrapper -- $0 becomes function name inside zsh functions
-- [Phase 02]: Renamed zsh 'status' local var to 'task_status' to avoid read-only variable conflict
-- [Phase 02]: Nested directory layout lists/{name}/tasks.json for future per-list config extensibility
-- [Phase 03]: Format td-ls output inside JXA to avoid JSON parsing in zsh
-- [Phase 03]: Use __EMPTY__ sentinel for empty list detection in td-ls
-- [Phase 03]: Export TASK_ID/NEW_TEXT before _td_storage_modify, unset after -- simplest env var forwarding to JXA
-- [Phase 03]: No confirmation prompt on rm -- CLI tool for fast workflows
-- [Phase 04]: Pre-validate status against statuses array in zsh via inline JXA, not inside _td_storage_modify
-- [Phase 04]: zparseopts -D -E for optional flag parsing in td-add
-- [Phase 04]: td-done uses data.statuses[last] for dynamic done status (not hardcoded)
-- [Phase 05]: Subcommand dispatch pattern (create/switch/ls) in single td-list file
-- [Phase 05]: _td_storage_active_list reads config.json via JXA with default fallback
-- [Phase 06]: Inline JXA duplicate check for status/tag existence before mutation
-- [Phase 06]: TASK_TAGS env var (comma-separated) for passing tags from td-add to _td_storage_add_task
-- [Phase 06]: Tag add is idempotent (no error on duplicate, just no-op)
-- [Phase 06]: JXA-side filtering via FILTER_STATUS/FILTER_PRIORITY env vars before output formatting
-- [Phase 06]: Tags displayed as comma-separated in new column between Priority and Title
-- [Phase 07]: TD_COLOR_ENABLED override check allows testing both color states without forking
-- [Phase 07]: Single cyan for all user-defined statuses; dim for tags (visually secondary)
-- [Phase 08]: Manual arg parsing instead of zparseopts for mixed positional+flag args in bulk collect
-- [Phase 08]: Empty ID list from --all on empty list returns success with 0 count, not error
-- [Phase 08]: Declare all locals before loops to avoid zsh local-in-loop output leak
-- [Phase 08]: Single JXA call groups all tasks by status using __COL_SEP__ delimiter for kanban rendering
-- [Phase 08]: Truncate plain text before colorizing to avoid splitting ANSI escape sequences
-- [Phase 13]: Reverse video for entire task row, skip per-field colors when selected
-- [Phase 13]: Wrap at top/bottom of column, skip empty columns on h/l, clamp row on column switch
-- [Phase 14]: TRAPWINCH function form for zcurses signal compat; redraw flag polling pattern
-- [Phase 14]: Help overlay as separate zcurses window; any-key dismiss pattern
-- [Phase 14]: Auto-detect checkbox mode when list has exactly 2 statuses
-- [Phase 14]: Flat list navigation with single index for checkbox mode (no col/row)
-- [Phase 14]: Checkbox body renders on stdscr directly, only header+statusbar as windows
-
-### Pending Todos
-
-None yet.
+- [Phase 15]: Lock is a directory (`mkdir`, never `mkdir -p` — the latter never
+  fails, so it can never serialise). Owner PID file enables stale detection.
+- [Phase 15]: Lock traps live at the TOP LEVEL of bin/todo. Verified on zsh 5.9
+  that a trap installed inside a function is function-local and fires on that
+  function's return, which would release every lock immediately.
+- [Phase 15]: Waiting uses `zselect` (fork-free, ~0.001ms) rather than `sleep`,
+  which costs a fork+exec (~1.7ms) per wait.
+- [Phase 16]: Field separator is U+001F, not TAB. TAB is IFS whitespace, so zsh
+  `read` collapses runs of it and empty fields shift every later column.
+- [Phase 16]: "Done" means a status literally named `done` if the list has one,
+  else the last status. Shared as one `_tdDoneStatus()` JXA helper so the
+  definition cannot drift between done / bulk / archive / the TUI.
+- [Phase 17]: Text is measured with zsh's native `${(m)#s}` — CJK 2, combining
+  marks 0, emoji 2. No wcwidth table needed.
+- [Phase 17]: Rendering helpers return via `REPLY`, not stdout. `$(...)` forks a
+  subshell per call: 2.03ms/cell vs 0.043ms.
+- [Phase 17]: The interactive UI will be raw ANSI, not zcurses. `zcurses attr`
+  only accepts the 8 named colours, which forces a black background and fights
+  the user's theme. A raw-ANSI prototype was verified to restore terminal state
+  byte-identically on exit.
+- [Phase 17]: Board has no outer frame — that is what frees the two columns that
+  make 26+1+26+1+26 = 80 land exactly.
+- [Phase 18]: `summary --oneline` is frozen byte-for-byte; the README tells
+  people to put it in ~/.zshrc.
 
 ### Blockers/Concerns
 
-- JXA security: safely passing user input with quotes/special chars to osascript needs edge-case testing (Phase 2)
-- Unicode/CJK display width in kanban deferred -- ASCII-primary for v1 (Phase 8)
-
-## Session Continuity
-
-Last session: 2026-04-03T22:52:39.078Z
-Stopped at: Completed 14-02-PLAN.md
-Resume file: None
+- Phase 19 (TUI rewrite) is the largest remaining piece: `lib/_td_interactive`
+  is 1114 lines of zcurses and needs porting onto `_td_ui` + raw ANSI.
+- Salvaged reference code for that port: a working raw-ANSI prototype and a key
+  decoder (arrows, Home/End, PgUp/PgDn, Shift-Tab, Alt-, Ctrl-, SGR mouse) live
+  in the session scratchpad under `ansi-tui/`.
+- Audit findings not yet addressed: dangling `active_list` handled
+  inconsistently across commands; `bulk done --status <invalid>` succeeds
+  silently while `bulk move` errors; `tag add` prints literal `'\''` escapes;
+  `archive` discards the return code of its second write.
