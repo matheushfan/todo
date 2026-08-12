@@ -32,8 +32,11 @@ output=$(TASK_ID="$task_id" JSON_DATA="$(cat "$tasks_file")" osascript -l JavaSc
     var ref = t.ref || "__EMPTY__";
     var created = t.created || "__EMPTY__";
     var updated = t.updated || "__EMPTY__";
-    // Return all fields tab-separated (sentinels prevent empty-field collapse)
-    return [t.id, t.text, t.status, t.priority, tags, ref, created, updated].join("\t");
+    // Separated by  (unit separator), not TAB: a TAB inside the task text
+    // would otherwise be read back as a field boundary and shift every later
+    // field. Newlines are folded to a space because zsh `read` stops at one.
+    var safeText = String(t.text).replace(/[\r\n]+/g, " ");
+    return [t.id, safeText, t.status, t.priority, tags, ref, created, updated].join("\u001f");
   }
 ' 2>/dev/null) || { _td_error "Failed to read task"; return 1; }
 
@@ -41,7 +44,7 @@ output=$(TASK_ID="$task_id" JSON_DATA="$(cat "$tasks_file")" osascript -l JavaSc
 
 # Parse fields
 local task_full_id task_text task_status task_priority task_tags task_ref task_created task_updated
-IFS=$'\t' read -r task_full_id task_text task_status task_priority task_tags task_ref task_created task_updated <<< "$output"
+IFS=$'\x1f' read -r task_full_id task_text task_status task_priority task_tags task_ref task_created task_updated <<< "$output"
 
 # Replace sentinels with empty strings
 [[ "$task_tags" == "__EMPTY__" ]] && task_tags=""

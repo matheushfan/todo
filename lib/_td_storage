@@ -99,6 +99,7 @@ _td_storage_modify() {
   json_data="$(cat "$file")" || { _td_lock_release "$file"; return 1; }
 
   JSON_DATA="$json_data" osascript -l JavaScript -e '
+    '"${TD_JS_DONE_STATUS}"'
     function run() {
       var data = JSON.parse(
         $.NSProcessInfo.processInfo.environment.objectForKey("JSON_DATA").js

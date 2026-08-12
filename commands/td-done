@@ -16,17 +16,24 @@ tasks_file="$(_td_storage_list_path)"
 local task_id
 task_id="$(_td_resolve_task_id "$tasks_file" "$id_prefix")" || return 1
 
-export TASK_ID="$task_id"
+local done_status
+done_status="$(_td_resolve_done_status "$tasks_file")"
+[[ -z "$done_status" ]] && { _td_error "List has no statuses defined"; return 1; }
+
+export TASK_ID="$task_id" NEW_STATUS="$done_status"
 _td_storage_modify "$tasks_file" '
   var env = $.NSProcessInfo.processInfo.environment;
   var tid = env.objectForKey("TASK_ID").js;
+  var ns = env.objectForKey("NEW_STATUS").js;
   var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
   if (idx === -1) throw new Error("not found");
-  data.tasks[idx].status = data.statuses[data.statuses.length - 1];
+  data.tasks[idx].status = ns;
   data.tasks[idx].updated = new Date().toISOString();
 '
 local rc=$?
-unset TASK_ID
+unset TASK_ID NEW_STATUS
 
-(( rc == 0 )) && _td_success "Completed task ${task_id:0:8}"
+# Name the status we actually moved to, so the message can never claim
+# "Completed" while parking the task somewhere else.
+(( rc == 0 )) && _td_success "Completed task ${task_id:0:8} (${done_status})"
 return $rc

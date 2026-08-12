@@ -98,7 +98,7 @@ _td_bulk_done() {
   _td_storage_modify "$tasks_file" '
     var env = $.NSProcessInfo.processInfo.environment;
     var ids = env.objectForKey("TASK_IDS").js.split(",");
-    var doneStatus = data.statuses[data.statuses.length - 1];
+    var doneStatus = _tdDoneStatus(data);
     var count = 0;
     ids.forEach(function(tid) {
       var idx = data.tasks.findIndex(function(t) { return t.id === tid; });

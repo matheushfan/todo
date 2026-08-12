@@ -7,30 +7,38 @@ todo - Task manager for the terminal
 
 Usage: todo <command> [options]
 
-Commands:
+Viewing:
   board                      Show kanban board view (default)
-  ui [--checkbox]            Interactive board view (zcurses)
-  bulk done|move|rm <ids>    Bulk operations on multiple tasks
-  add [-p prio] [-t tag] <title>  Add a new task
+  ui [--checkbox]            Interactive board view
   ls [-s status] [-p prio]   List tasks (with optional filters)
+  show <id>                  Show every field of one task
+  summary [--oneline]        Task counts by status (--oneline for your prompt)
+
+Tasks:
+  add [-p prio] [-t tags] [-r url] <title>
+                             Add a task (-t accepts a,b or repeated -t)
   edit <id> <title>          Edit task title
   rm <id>                    Remove a task
   done <id>                  Mark task as completed
-  move <id> <status>         Move task to a status (todo, doing, done)
-  priority <id> <value>      Set priority (alta, media, baixa)
-  status                     List statuses for current list
-  status add <name>          Add a custom status
-  status rm <name>           Remove a status (no tasks must use it)
-  tag add <id> <tag>         Add a tag to a task
-  tag rm <id> <tag>          Remove a tag from a task
-  summary                    Show task counts by status
-  summary --oneline          One-line summary for prompt integration
+  move <id> <status>         Move task to a status
+  priority <id> <value>      Set priority (high, medium, low)
+  ref <id> [url]             Attach a URL to a task, or show the current one
+  tag add|rm <id> <tag>      Add or remove a tag
+
+Bulk & archive:
+  bulk done|move|rm <ids>    Operate on several tasks at once
+  archive                    Archive all completed tasks
+  archive ls                 List archived tasks
+  archive undo <id>          Restore a task from the archive
+
+Lists & statuses:
   list                       List all lists
-  list create <name>         Create a new list
-  list switch <name>         Switch active list
+  list create|switch <name>  Create a list, or switch the active one
+  status                     List statuses for the current list
+  status add|rm <name>       Add or remove a custom status
+
+Other:
   help                       Show this help message
   version                    Show version
-
-Run 'todo help <command>' for command-specific help.
 HELP
 }

@@ -10,10 +10,11 @@ _archive_do() {
   # Read done tasks from active file via JXA
   local done_tasks
   done_tasks=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+    '"${TD_JS_DONE_STATUS}"'
     function run() {
       var env = $.NSProcessInfo.processInfo.environment;
       var data = JSON.parse(env.objectForKey("JSON_DATA").js);
-      var doneStatus = data.statuses[data.statuses.length - 1];
+      var doneStatus = _tdDoneStatus(data);
       var matched = data.tasks.filter(function(t) { return t.status === doneStatus; });
       if (matched.length === 0) return "__NONE__";
       return JSON.stringify(matched);
@@ -58,7 +59,7 @@ _archive_do() {
 
   # Step B: Remove archived tasks from tasks.json
   _td_storage_modify "$tasks_file" '
-    var doneStatus = data.statuses[data.statuses.length - 1];
+    var doneStatus = _tdDoneStatus(data);
     data.tasks = data.tasks.filter(function(t) { return t.status !== doneStatus; });
   '
 

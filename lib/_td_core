@@ -16,6 +16,44 @@ _td_version_string() {
   printf "todo v%s\n" "$TD_VERSION"
 }
 
+# JXA helper, prepended to any transform that needs the "completed" status.
+# Kept as one shared snippet so the definition of "done" cannot drift between
+# done / bulk done / archive / the interactive UI.
+typeset -g TD_JS_DONE_STATUS='
+  function _tdDoneStatus(data) {
+    var s = data.statuses || [];
+    if (!s.length) return "";
+    for (var i = 0; i < s.length; i++) {
+      if (String(s[i]).toLowerCase() === "done") return s[i];
+    }
+    return s[s.length - 1];
+  }
+'
+
+# Resolve which status means "completed" for a list.
+# Prefers a status literally named "done" (case-insensitive); only falls back to
+# the last status when there is none. Taking the last status unconditionally is
+# wrong the moment a user follows the README and runs `todo status add
+# in-review`: "done" then silently means "in-review".
+# Usage: _td_resolve_done_status <tasks_file>
+_td_resolve_done_status() {
+  local tasks_file="$1"
+
+  JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+    function run() {
+      var data = JSON.parse(
+        $.NSProcessInfo.processInfo.environment.objectForKey("JSON_DATA").js
+      );
+      var s = data.statuses || [];
+      if (!s.length) return "";
+      for (var i = 0; i < s.length; i++) {
+        if (String(s[i]).toLowerCase() === "done") return s[i];
+      }
+      return s[s.length - 1];
+    }
+  ' 2>/dev/null
+}
+
 # Resolve task ID from prefix (case-insensitive)
 # Usage: _td_resolve_task_id <tasks_file> <id_prefix>
 # Returns: full UUID to stdout, or error + return 1

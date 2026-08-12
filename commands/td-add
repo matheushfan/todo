@@ -25,16 +25,24 @@ if (( ${#priority_opt} > 0 )); then
   esac
 fi
 
+# Accept both documented spellings: repeated flags (-t a -t b) and the
+# comma-separated form the README uses (-t a,b). The comma form used to be
+# rejected outright by the per-tag validator.
 local -a tags=()
-local i
+local i t one
 for (( i=1; i<=${#tags_opt}; i+=2 )); do
-  local t="${tags_opt[$((i+1))]}"
-  if [[ ! "$t" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-    _td_error "Invalid tag '$t'. Use letters, numbers, hyphens, underscores only."
-    return 1
-  fi
-  tags+=("$t")
+  t="${tags_opt[$((i+1))]}"
+  for one in ${(s:,:)t}; do
+    [[ -z "$one" ]] && continue
+    if [[ ! "$one" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+      _td_error "Invalid tag '$one'. Use letters, numbers, hyphens, underscores only."
+      return 1
+    fi
+    tags+=("$one")
+  done
 done
+# Deduplicate so -t a,a and -t a -t a both yield one tag.
+tags=("${(@u)tags}")
 
 _td_storage_init
 

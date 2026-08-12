@@ -636,7 +636,7 @@ _td_interactive_action_checkbox_done() {
     var env = $.NSProcessInfo.processInfo.environment;
     var tid = env.objectForKey("TASK_ID").js;
     var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
-    if (idx >= 0) { data.tasks[idx].status = data.statuses[data.statuses.length - 1]; data.tasks[idx].updated = new Date().toISOString(); }
+    if (idx >= 0) { data.tasks[idx].status = _tdDoneStatus(data); data.tasks[idx].updated = new Date().toISOString(); }
   '
   unset TASK_ID
 
@@ -733,7 +733,7 @@ _td_interactive_action_done() {
     var env = $.NSProcessInfo.processInfo.environment;
     var tid = env.objectForKey("TASK_ID").js;
     var idx = data.tasks.findIndex(function(t) { return t.id === tid; });
-    if (idx >= 0) { data.tasks[idx].status = data.statuses[data.statuses.length - 1]; data.tasks[idx].updated = new Date().toISOString(); }
+    if (idx >= 0) { data.tasks[idx].status = _tdDoneStatus(data); data.tasks[idx].updated = new Date().toISOString(); }
   '
   unset TASK_ID
 
