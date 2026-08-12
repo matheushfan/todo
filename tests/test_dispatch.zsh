@@ -11,8 +11,11 @@ output=$(zsh "$TD_BIN" help 2>&1)
 assert_contains "help command shows usage" "Usage:" "$output"
 
 # Test 3: Version command
+# Assert the shape, not the literal version: pinning the number here meant the
+# test kept passing against a TD_VERSION that had gone stale two releases back.
 output=$(zsh "$TD_BIN" version 2>&1)
-assert_contains "version command shows version" "todo v0.1.0" "$output"
+assert_eq "version command shows semver" "0" \
+  "$([[ "$output" == todo\ v<->.<->.<-> ]]; echo $?)"
 
 # Test 4: Unknown command fails
 output=$(zsh "$TD_BIN" nonexistent 2>&1)

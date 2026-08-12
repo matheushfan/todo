@@ -9,7 +9,7 @@ main() {
 
   # Globals (intentional, used by all commands)
   typeset -g TD_ROOT="$td_root"
-  typeset -g TD_VERSION="0.1.0"
+  typeset -g TD_VERSION="0.3.0"
   typeset -g TD_DATA="${TODOLIST_DATA:-$HOME/.todolist}"
 
   # Set function search path (project dirs first)
@@ -17,6 +17,9 @@ main() {
 
   # Load core utilities (needed by all paths)
   autoload -Uz _td_core && _td_core
+
+  # Load storage locking (must precede the storage engine)
+  autoload -Uz _td_lock && _td_lock
 
   # Load storage engine (JSON data layer)
   autoload -Uz _td_storage && _td_storage
@@ -42,5 +45,13 @@ main() {
     return 1
   fi
 }
+
+# Lock safety net. These must stay at the top level: in zsh a trap installed
+# inside a function is local to that function and fires the moment it returns,
+# which would drop every lock immediately and protect nothing.
+trap '_td_lock_release_all 2>/dev/null' EXIT
+trap '_td_lock_release_all 2>/dev/null; exit 130' INT
+trap '_td_lock_release_all 2>/dev/null; exit 143' TERM
+trap '_td_lock_release_all 2>/dev/null; exit 129' HUP
 
 main "$@"

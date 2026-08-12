@@ -1,6 +1,13 @@
 # _td_storage - JSON storage engine via JXA with atomic writes
 # This file body becomes the function body via autoload
 
+# Locking is part of the storage contract, not an opt-in. Load it here rather
+# than relying on bin/todo, because several test suites autoload this library
+# directly through fpath and never go through the entry point.
+if (( ! ${+functions[_td_lock_acquire]} )); then
+  autoload -Uz _td_lock && _td_lock
+fi
+
 # Ensure storage directory and default list exist
 _td_storage_init() {
   local data_dir="$TD_DATA"
@@ -79,12 +86,17 @@ _td_storage_read() {
 _td_storage_modify() {
   local file="$1"
   local js_transform="$2"
-  local tmpfile="${file}.tmp.$$"
+  local tmpfile="${file}.tmp.$$.$RANDOM"
 
   [[ -f "$file" ]] || { _td_error "File not found: $file"; return 1; }
 
+  # The read below and the mv at the bottom must be one indivisible unit.
+  # Without this, a concurrent writer's changes are read, discarded and
+  # overwritten -- a lost update that leaves valid JSON and so goes unnoticed.
+  _td_lock_acquire "$file" || return 1
+
   local json_data
-  json_data="$(cat "$file")" || return 1
+  json_data="$(cat "$file")" || { _td_lock_release "$file"; return 1; }
 
   JSON_DATA="$json_data" osascript -l JavaScript -e '
     function run() {
@@ -98,11 +110,13 @@ _td_storage_modify() {
 
   if [[ ! -s "$tmpfile" ]]; then
     rm -f "$tmpfile"
+    _td_lock_release "$file"
     _td_error "JSON modify failed"
     return 1
   fi
 
-  mv "$tmpfile" "$file" || { rm -f "$tmpfile"; return 1; }
+  mv "$tmpfile" "$file" || { rm -f "$tmpfile"; _td_lock_release "$file"; return 1; }
+  _td_lock_release "$file"
 }
 
 # Add a task to a tasks.json file
@@ -116,7 +130,9 @@ _td_storage_add_task() {
   local task_priority="${4:-medium}"
   local task_id
   task_id="$(uuidgen)" || return 1
-  local tmpfile="${file}.tmp.$$"
+  local tmpfile="${file}.tmp.$$.$RANDOM"
+
+  _td_lock_acquire "$file" || return 1
 
   JSON_DATA="$(cat "$file")" \
   TASK_ID="$task_id" \
@@ -148,11 +164,13 @@ _td_storage_add_task() {
 
   if [[ ! -s "$tmpfile" ]]; then
     rm -f "$tmpfile"
+    _td_lock_release "$file"
     _td_error "Failed to add task"
     return 1
   fi
 
-  mv "$tmpfile" "$file" || { rm -f "$tmpfile"; return 1; }
+  mv "$tmpfile" "$file" || { rm -f "$tmpfile"; _td_lock_release "$file"; return 1; }
+  _td_lock_release "$file"
   printf '%s\n' "$task_id"
 }
 

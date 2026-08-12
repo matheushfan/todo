@@ -1,0 +1,174 @@
+# _td_lock - advisory inter-process locking for the JSON storage layer
+# Autoloaded: file body = function body
+#
+# Every mutation in this tool is a read-whole-file / transform / write-whole-file
+# cycle. The temp+mv write is atomic, so the file always stays valid JSON --
+# which is exactly why concurrent writes used to lose data *silently*: the
+# loser's read happened before the winner's write, and nothing was left to
+# indicate a task had vanished. Measured before this lock existed: 20 parallel
+# `todo add` calls, 1 task survived, all 20 printed "Created task".
+#
+# Mechanism: the lock IS a directory created next to the file it protects.
+#   mkdir <file>.lock          atomic in the kernel, exactly one racer wins
+#   <file>.lock/owner          PID of the winner, for stale detection
+#
+# Never use `mkdir -p` here: it returns 0 on an already-existing directory, so
+# it can never fail, so it can never serialise anything.
+#
+# Waiting is fork-free via zselect (centiseconds, inside the shell process).
+# `sleep 0.05` would cost an extra fork+exec, ~1.7ms measured.
+
+zmodload -F zsh/zselect b:zselect 2>/dev/null
+zmodload -F zsh/stat    b:zstat   2>/dev/null
+zmodload zsh/datetime             2>/dev/null
+
+typeset -ga _TD_LOCKS_HELD=()
+: ${TD_LOCK_TIMEOUT:=10}      # seconds to wait before giving up
+: ${TD_LOCK_STALE_AGE:=30}    # seconds before a lock is even considered stale
+typeset -g TD_LOCK_TIMEOUT TD_LOCK_STALE_AGE
+
+# Sleep without forking. Arg: centiseconds.
+# zselect returns 1 when it times out, which is the normal path here, so the
+# status is swallowed deliberately.
+_td_lock_nap() {
+  if (( ${+builtins[zselect]} )); then
+    zselect -t "$1" 2>/dev/null
+  else
+    command sleep $(( $1 / 100.0 )) 2>/dev/null
+  fi
+  return 0
+}
+
+# Break a lock whose owner died. Returns 0 only if it actually broke one.
+_td_lock_try_break() {
+  local lockdir="$1"
+
+  # A young lock is never stale. This age guard also covers the window between
+  # `mkdir` succeeding and the owner file being written, which would otherwise
+  # look like an ownerless -- and therefore breakable -- lock.
+  local -a st
+  zstat -A st +mtime "$lockdir" 2>/dev/null || return 1
+  (( EPOCHSECONDS - st[1] < TD_LOCK_STALE_AGE )) && return 1
+
+  local owner=''
+  [[ -r "$lockdir/owner" ]] && read -r owner < "$lockdir/owner" 2>/dev/null
+
+  # kill -0 sends no signal, it only asks whether we could. Success means the
+  # holder is alive and the lock is legitimately held.
+  [[ -n "$owner" ]] && kill -0 "$owner" 2>/dev/null && return 1
+
+  # Rename first, delete after. If two waiters both decide to break the lock,
+  # only one `mv` can find the source, so only one wins. A direct `rm -rf`
+  # would let both think they won and let a third process slip a fresh lock in
+  # between the removal and the retry.
+  local graveyard="${lockdir}.stale.$$.${RANDOM}"
+  if mv "$lockdir" "$graveyard" 2>/dev/null; then
+    rm -rf -- "$graveyard" 2>/dev/null
+    return 0
+  fi
+  return 1
+}
+
+# Usage: _td_lock_acquire <file> [timeout_seconds]
+_td_lock_acquire() {
+  local target="$1"
+  local timeout="${2:-$TD_LOCK_TIMEOUT}"
+  local lockdir="${target}.lock"
+
+  # Re-entrant, refcounted by repetition: a command-level lock may nest around
+  # the one _td_storage_modify takes internally.
+  # (Ie) is an exact match; plain (I) is a glob match and would wrongly report a
+  # hit for paths containing [ ] * or ?.
+  if (( ${_TD_LOCKS_HELD[(Ie)$lockdir]} )); then
+    _TD_LOCKS_HELD+=("$lockdir")
+    return 0
+  fi
+
+  local deadline=$(( EPOCHREALTIME + timeout ))
+  local backoff=1                  # centiseconds, doubling up to 10 (100ms)
+
+  while :; do
+    if mkdir "$lockdir" 2>/dev/null; then
+      print -r -- "$$" > "$lockdir/owner" 2>/dev/null
+      _TD_LOCKS_HELD+=("$lockdir")
+      return 0
+    fi
+
+    _td_lock_try_break "$lockdir" && continue
+
+    (( EPOCHREALTIME >= deadline )) && break
+
+    _td_lock_nap $backoff
+    (( backoff < 10 )) && (( backoff *= 2 ))
+  done
+
+  _td_error "timed out after ${timeout}s waiting for lock on ${target:t}"
+  return 1
+}
+
+# Multi-file operations must take their locks in a globally consistent order,
+# or two processes running the same operation in opposite directions deadlock.
+# Sorting the paths provides that order.
+# Usage: _td_lock_acquire_many <file> <file> ...
+_td_lock_acquire_many() {
+  local -a targets=("${(@u)${(@o)@}}")   # sorted, deduplicated
+  local -a taken=()
+  local t u
+  for t in "${targets[@]}"; do
+    if _td_lock_acquire "$t"; then
+      taken+=("$t")
+    else
+      for u in "${taken[@]}"; do _td_lock_release "$u"; done
+      return 1
+    fi
+  done
+  return 0
+}
+
+_td_lock_release() {
+  local target="$1"
+  local lockdir="${target}.lock"
+
+  local idx=${_TD_LOCKS_HELD[(Ie)$lockdir]}
+  (( idx )) || return 0            # we never held it, so we must not touch it
+  _TD_LOCKS_HELD[$idx]=()
+
+  # Still referenced by an outer re-entrant acquire? Keep it.
+  (( ${_TD_LOCKS_HELD[(Ie)$lockdir]} )) && return 0
+
+  # Remove it only if it is still ours. If it was broken as stale while we were
+  # slow, another process owns this directory now.
+  local owner=''
+  [[ -r "$lockdir/owner" ]] && read -r owner < "$lockdir/owner" 2>/dev/null
+  if [[ -z "$owner" || "$owner" == "$$" ]]; then
+    rm -f -- "$lockdir/owner" 2>/dev/null
+    rmdir -- "$lockdir" 2>/dev/null
+  fi
+  return 0
+}
+
+_td_lock_release_many() {
+  local t
+  for t in "$@"; do _td_lock_release "$t"; done
+  return 0
+}
+
+# Crash safety net. Wired to EXIT/INT/TERM/HUP from the TOP LEVEL of bin/todo.
+#
+# The traps cannot be installed from inside a function -- not from here, and not
+# from main(). In zsh a trap set inside a function is local to that function and
+# fires the moment it returns, which would release every lock immediately and
+# protect nothing. Verified on zsh 5.9.
+_td_lock_release_all() {
+  local d owner
+  for d in "${_TD_LOCKS_HELD[@]}"; do
+    [[ -z "$d" ]] && continue
+    owner=''
+    [[ -r "$d/owner" ]] && read -r owner < "$d/owner" 2>/dev/null
+    [[ -z "$owner" || "$owner" == "$$" ]] || continue
+    rm -f -- "$d/owner" 2>/dev/null
+    rmdir -- "$d" 2>/dev/null
+  done
+  _TD_LOCKS_HELD=()
+  return 0
+}
