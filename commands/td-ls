@@ -1,18 +1,52 @@
-# td-ls - list tasks in current list
+# td-ls - list tasks in the current list
 # Autoloaded: file body = function body
+#
+# Column geometry at 80 columns:
+#   2 + id 8 + 2 + P 1 + 2 + status 8 + 2 + tags 14 + 2 + title (rest) = 80
+# Priority is a one-column glyph rather than the word "medium". That reclaims
+# seven columns for the title, which is the field you actually read and the
+# only one that was being truncated.
 
 local -a status_opt priority_opt
-zparseopts -D -E - s:=status_opt -status:=status_opt p:=priority_opt -priority:=priority_opt
+zparseopts -D -E - s:=status_opt -status:=status_opt p:=priority_opt -priority:=priority_opt 2>/dev/null || {
+  _td_error "Usage: todo ls [-s <status>] [-p high|medium|low]"
+  return 1
+}
 
 local filter_status="${status_opt[2]:-}"
 local filter_priority="${priority_opt[2]:-}"
 
+# zparseopts leaves the option in the array with an empty value when the
+# argument is missing; v0.2 leaked "zparseopts: missing argument" to the user
+# and then listed everything with exit status 0.
+if (( ${#status_opt} > 0 )) && [[ -z "$filter_status" ]]; then
+  _td_error "-s requires a status argument"
+  return 1
+fi
+if (( ${#priority_opt} > 0 )) && [[ -z "$filter_priority" ]]; then
+  _td_error "-p requires a priority argument"
+  return 1
+fi
+if [[ -n "$filter_priority" ]]; then
+  case "$filter_priority" in
+    (high|medium|low) ;;
+    (*) _td_error "Invalid priority '$filter_priority'. Use: high, medium, low"; return 1 ;;
+  esac
+fi
+
 _td_storage_init
+
+if (( ! ${+functions[_td_ui_init]} )); then
+  autoload -Uz _td_ui && _td_ui
+fi
+[[ -z "${TD_GLYPH[hbar]}" ]] && _td_ui_init
 
 local tasks_file
 tasks_file="$(_td_storage_list_path)"
 
-# Format output inside JXA to avoid JSON parsing in zsh
+# Format inside JXA to avoid parsing JSON in zsh. Fields are 0x1F separated:
+# TAB is IFS whitespace, so zsh read collapses runs of it and an empty tags
+# field silently shifts every later column left.
 local output
 output=$(JSON_DATA="$(cat "$tasks_file")" \
   FILTER_STATUS="$filter_status" \
@@ -25,40 +59,114 @@ output=$(JSON_DATA="$(cat "$tasks_file")" \
     var fpEnv = env.objectForKey("FILTER_PRIORITY");
     var fs = fsEnv ? fsEnv.js : "";
     var fp = fpEnv ? fpEnv.js : "";
+    var order = {};
+    (data.statuses || []).forEach(function (s, i) { order[s] = i; });
+
+    var total = data.tasks.length;
     var tasks = data.tasks;
-    if (fs) tasks = tasks.filter(function(t) { return t.status === fs; });
-    if (fp) tasks = tasks.filter(function(t) { return t.priority === fp; });
-    if (tasks.length === 0) return "__EMPTY__";
-    var lines = tasks.map(function(t) {
-      var tagStr = t.tags && t.tags.length > 0 ? t.tags.join(",") : "";
-      var refInd = (t.ref && t.ref !== "") ? " \u2192" : "";
-      // \u001f (unit separator), not \t: TAB is an IFS whitespace character, so
-      // zsh read collapses runs of it and an empty tags field silently shifts
-      // every later column left. It also cannot appear in user-entered text.
-      return t.id.substring(0, 8) + "\u001f" + t.status + "\u001f" + t.priority + "\u001f" + tagStr + "\u001f" + t.text + refInd;
+    if (fs) tasks = tasks.filter(function (t) { return t.status === fs; });
+    if (fp) tasks = tasks.filter(function (t) { return t.priority === fp; });
+
+    // Group by status in the list order, so the output reads like the board.
+    var rank = { high: 0, medium: 1, low: 2 };
+    tasks = tasks.slice().sort(function (a, b) {
+      var d = (order[a.status] === undefined ? 99 : order[a.status]) -
+              (order[b.status] === undefined ? 99 : order[b.status]);
+      if (d) return d;
+      return (rank[a.priority] === undefined ? 9 : rank[a.priority]) -
+             (rank[b.priority] === undefined ? 9 : rank[b.priority]);
+    });
+
+    if (tasks.length === 0) return "__NONE__" + "" + total;
+
+    var lines = tasks.map(function (t) {
+      var tagStr = (t.tags && t.tags.length) ? t.tags.join(" ") : "";
+      var text = String(t.text || "").replace(/[\r\n\t]+/g, " ");
+      return [t.id.substring(0, 8), t.status, t.priority || "", tagStr,
+              text, t.ref || ""].join("");
     });
     return lines.join("\n");
   }
 ' 2>/dev/null)
 
-if [[ "$output" == "__EMPTY__" ]] || [[ -z "$output" ]]; then
-  _td_success "No tasks yet. Run 'todo add' to create one."
+if [[ -z "$output" ]]; then
+  _td_error "Failed to read tasks"
+  return 1
+fi
+
+if [[ "$output" == __NONE__* ]]; then
+  local total="${output#*$'\x1f'}"
+  if (( total == 0 )); then
+    _td_success "No tasks yet. Run 'todo add' to create one."
+  else
+    # Distinguishing these two matters: v0.2 told a user with a full list to go
+    # create their first task whenever a filter simply matched nothing.
+    local what=""
+    [[ -n "$filter_status" ]]   && what+=" status '${filter_status}'"
+    [[ -n "$filter_priority" ]] && what+=" priority '${filter_priority}'"
+    _td_success "No tasks match${what}. ${total} task$( (( total == 1 )) || print s ) in this list."
+  fi
   return 0
 fi
 
-printf "  ${TD_COLORS[bold]}%-10s %-8s %-10s %-14s %s${TD_COLORS[reset]}\n" \
-  "ID" "Status" "Priority" "Tags" "Title"
+local term_width=${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}
+(( term_width < 40 )) && term_width=80
 
-while IFS=$'\x1f' read -r id task_status priority tags title; do
-  local color_priority="${TD_PRIORITY_COLORS[$priority]}${priority}${TD_COLORS[reset]}"
-  local color_status="${TD_COLORS[cyan]}${task_status}${TD_COLORS[reset]}"
-  local color_tags="${TD_COLORS[dim]}${tags}${TD_COLORS[reset]}"
+local w_id=8 w_pri=1 w_status=8 w_tags=14
+local w_title=$(( term_width - 2 - w_id - 2 - w_pri - 2 - w_status - 2 - w_tags - 2 ))
+(( w_title < 12 )) && { w_tags=0; w_title=$(( term_width - 2 - w_id - 2 - w_pri - 2 - w_status - 2 )); }
+(( w_title < 8 )) && w_title=8
 
-  printf "  %-10s " "$id"
-  _td_printf_colored "$color_status" 8
-  printf " "
-  _td_printf_colored "$color_priority" 10
-  printf " "
-  _td_printf_colored "$color_tags" 14
-  printf " %s\n" "$title"
+# --- header ---
+local hdr="  "
+_td_fit "ID" $w_id;          hdr+="$REPLY  "
+_td_fit "P"  $w_pri;         hdr+="$REPLY  "
+_td_fit "STATUS" $w_status;  hdr+="$REPLY  "
+(( w_tags > 0 )) && { _td_fit "TAGS" $w_tags; hdr+="$REPLY  "; }
+_td_fit "TITLE" $w_title;    hdr+="$REPLY"
+_td_paint text-faint "$hdr"
+print -r -- "$REPLY"
+
+_td_repeat "${TD_GLYPH[hbar]}" $(( term_width - 4 ))
+_td_paint border "  $REPLY  "
+print -r -- "$REPLY"
+
+# --- rows ---
+local id task_status priority tags title ref
+local glyph token line shown=0
+while IFS=$'\x1f' read -r id task_status priority tags title ref; do
+  [[ -z "$id" ]] && continue
+  (( shown++ ))
+
+  case "$priority" in
+    (high)   glyph="${TD_GLYPH[high]}";   token=danger ;;
+    (low)    glyph="${TD_GLYPH[low]}";    token=success ;;
+    (*)      glyph="${TD_GLYPH[medium]}"; token=warning ;;
+  esac
+  [[ -n "$ref" ]] && title+=" ${TD_GLYPH[ref]}"
+
+  line="  "
+  _td_fit "$id" $w_id;   _td_paint text-faint "$REPLY"; line+="$REPLY  "
+  _td_paint "$token" "$glyph";                          line+="$REPLY  "
+  _td_fit "$task_status" $w_status; _td_paint text-muted "$REPLY"; line+="$REPLY  "
+  if (( w_tags > 0 )); then
+    _td_fit "$tags" $w_tags; _td_paint accent-alt "$REPLY"; line+="$REPLY  "
+  fi
+  _td_fit "$title" $w_title; _td_paint text "$REPLY"; line+="$REPLY"
+  print -r -- "$line"
 done <<< "$output"
+
+# --- footer: totals and the priority legend, which v0.2 documented nowhere ---
+_td_repeat "${TD_GLYPH[hbar]}" $(( term_width - 4 ))
+_td_paint border "  $REPLY  "
+print -r -- "$REPLY"
+
+local legend="${TD_GLYPH[high]} high  ${TD_GLYPH[medium]} medium  ${TD_GLYPH[low]} low"
+local left right
+_td_paint text-faint "  ${shown} task$( (( shown == 1 )) || print s )"; left="$REPLY"
+_td_paint text-faint "${legend}  "; right="$REPLY"
+_td_width "$left";  local lw=$REPLY
+_td_width "$right"; local rw=$REPLY
+local gap=$(( term_width - lw - rw ))
+(( gap < 1 )) && gap=1
+print -r -- "${left}${(l:$gap:: :)}${right}"

@@ -18,6 +18,8 @@ autoload -Uz _td_storage && _td_storage
 
 # Force colors enabled for unit tests (set BEFORE loading _td_color)
 typeset -g TD_COLOR_ENABLED=1
+autoload -Uz _td_ui && _td_ui
+_td_ui_init always
 autoload -Uz _td_color && _td_color
 
 # ========== Unit Tests: _td_strip_ansi ==========
@@ -113,6 +115,8 @@ assert_eq "TD_COLORS[reset] empty when disabled" "" "${TD_COLORS[reset]}"
 
 # Re-enable for remaining tests
 typeset -g TD_COLOR_ENABLED=1
+autoload -Uz _td_ui && _td_ui
+_td_ui_init always
 _td_color
 
 # ========== Integration: Piped td-ls has no escape codes ==========
@@ -142,10 +146,10 @@ printf "\n--- Integration: td-ls header ---\n"
 local ls_output
 ls_output=$($TD_BIN ls 2>&1 | cat)
 assert_contains "td-ls header has ID" "ID" "$ls_output"
-assert_contains "td-ls header has Status" "Status" "$ls_output"
-assert_contains "td-ls header has Priority" "Priority" "$ls_output"
-assert_contains "td-ls header has Tags" "Tags" "$ls_output"
-assert_contains "td-ls header has Title" "Title" "$ls_output"
+assert_contains "td-ls header has STATUS" "STATUS" "$ls_output"
+assert_contains "td-ls header has priority column" "P  " "$ls_output"
+assert_contains "td-ls header has TAGS" "TAGS" "$ls_output"
+assert_contains "td-ls header has TITLE" "TITLE" "$ls_output"
 
 # ========== Integration: td-ls with high task shows high in output ==========
 
@@ -155,6 +159,9 @@ $TD_BIN add "High priority task" -p high 2>&1 >/dev/null
 ls_output=$($TD_BIN ls 2>&1 | cat)
 local stripped_output
 stripped_output=$(_td_strip_ansi "$ls_output")
-assert_contains "td-ls stripped output contains high" "high" "$stripped_output"
+# Priority is now a one-column glyph rather than the word, which buys seven
+# columns for the title. The legend in the footer is what keeps it readable.
+assert_contains "td-ls marks the high-priority task" "${TD_GLYPH[high]}" "$stripped_output"
+assert_contains "td-ls footer explains the glyphs" "high" "$stripped_output"
 
 test_summary

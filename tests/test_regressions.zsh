@@ -10,7 +10,12 @@ export TODOLIST_DATA="$TEST_DATA"
 trap 'rm -rf "$TEST_DATA"' EXIT
 
 fresh() { rm -rf "$TODOLIST_DATA"; mkdir -p "$TODOLIST_DATA"; }
-last_id() { zsh "$TD_BIN" ls | tail -1 | awk '{print $1}'; }
+# Match the id column rather than taking the last line: `todo ls` now closes
+# with a rule and a totals/legend footer.
+task_rows() { zsh "$TD_BIN" ls | grep -E '^  [0-9A-F]{8}  '; }
+# `todo ls` sorts by status now, so the last ROW is not the last task added.
+# Take the id from what `add` reports instead.
+add_task() { zsh "$TD_BIN" add "$@" | awk "{print \$3}"; }
 status_of() {  # status_of <id-prefix>
   zsh "$TD_BIN" show "$1" | awk '/^ *Status/ {print $2}'
 }
@@ -28,20 +33,20 @@ ls_out=$(zsh "$TD_BIN" ls)
 # Compare against the header's own column offsets: the title must begin exactly
 # where the "Title" heading begins, whether or not the task has tags.
 header=$(print -r -- "$ls_out" | head -1)
-title_col=$(( ${#${header%%Title*}} + 1 ))
-tags_col=$((  ${#${header%%Tags*}}  + 1 ))
+title_col=$(( ${#${header%%TITLE*}} + 1 ))
+tags_col=$((  ${#${header%%TAGS*}}  + 1 ))
 
 untagged_row=$(print -r -- "$ls_out" | grep 'Task without tags')
-assert_eq "untagged task: title starts in the Title column" "Task without tags" \
-  "${untagged_row[$title_col,-1]}"
+assert_eq "untagged task: title starts in the Title column" "0" \
+  "$([[ "${untagged_row[$title_col,-1]}" == "Task without tags"* ]]; echo $?)"
 assert_eq "untagged task: Tags column is blank" "" \
   "${${untagged_row[$tags_col,$((title_col - 1))]}// /}"
 
 tagged_row=$(print -r -- "$ls_out" | grep 'Task with tag')
 assert_eq "tagged task: tag sits in the Tags column" "backend" \
   "${${tagged_row[$tags_col,$((title_col - 1))]}// /}"
-assert_eq "tagged task: title still starts in the Title column" "Task with tag" \
-  "${tagged_row[$title_col,-1]}"
+assert_eq "tagged task: title still starts in the Title column" "0" \
+  "$([[ "${tagged_row[$title_col,-1]}" == "Task with tag"* ]]; echo $?)"
 
 # --- `todo done` moved tasks to the LAST status, whatever it was ------------
 # It used data.statuses[length-1]. Following the README's own example
@@ -49,30 +54,26 @@ assert_eq "tagged task: title still starts in the Title column" "Task with tag" 
 # still printing "Completed task".
 printf "\n--- done resolves the real done status ---\n"
 fresh
-zsh "$TD_BIN" add "Ship it" >/dev/null
+id=$(add_task "Ship it")
 zsh "$TD_BIN" status add "in-review" >/dev/null
-id=$(last_id)
 done_out=$(zsh "$TD_BIN" done "$id")
 assert_eq "done -> 'done', not the trailing custom status" "done" "$(status_of "$id")"
 assert_contains "done names the status it used" "done" "$done_out"
 
 # --- `bulk done` had the same defect ----------------------------------------
 fresh
-zsh "$TD_BIN" add "Bulk one" >/dev/null
+id=$(add_task "Bulk one")
 zsh "$TD_BIN" status add "in-review" >/dev/null
-id=$(last_id)
 zsh "$TD_BIN" bulk done "$id" >/dev/null
 assert_eq "bulk done -> 'done', not the trailing status" "done" "$(status_of "$id")"
 
 # --- `todo archive` archived whatever sat in the last status ----------------
 printf "\n--- archive only takes completed tasks ---\n"
 fresh
-zsh "$TD_BIN" add "Finished" >/dev/null
-fin=$(last_id)
+fin=$(add_task "Finished")
 zsh "$TD_BIN" status add "in-review" >/dev/null
 zsh "$TD_BIN" done "$fin" >/dev/null
-zsh "$TD_BIN" add "Still reviewing" >/dev/null
-rev=$(last_id)
+rev=$(add_task "Still reviewing")
 zsh "$TD_BIN" move "$rev" in-review >/dev/null
 zsh "$TD_BIN" archive >/dev/null
 remaining=$(zsh "$TD_BIN" ls)
@@ -85,21 +86,20 @@ printf "\n--- comma-separated tags ---\n"
 fresh
 add_out=$(zsh "$TD_BIN" add -t backend,urgent "Refactor auth" 2>&1)
 assert_exit_code "comma-separated tags accepted" "0" "$?"
-id=$(last_id)
+id=${$(print -r -- "$add_out")[(w)3]}
 show_out=$(zsh "$TD_BIN" show "$id")
 assert_contains "first comma tag stored" "backend" "$show_out"
 assert_contains "second comma tag stored" "urgent" "$show_out"
 
-zsh "$TD_BIN" add -t dup,dup "Dedupe" >/dev/null
-tags_line=$(zsh "$TD_BIN" show "$(last_id)" | grep 'Tags')
+dup_id=$(add_task -t dup,dup "Dedupe")
+tags_line=$(zsh "$TD_BIN" show "$dup_id" | grep "Tags")
 assert_eq "repeated tag collapses to one" "1" \
   "$(print -r -- "$tags_line" | grep -o 'dup' | wc -l | tr -d ' ')"
 
 # --- `todo show` scrambled every field when the text held a TAB -------------
 printf "\n--- show survives a TAB inside the task text ---\n"
 fresh
-zsh "$TD_BIN" add $'before\tafter' >/dev/null
-id=$(last_id)
+id=$(add_task $'before\tafter')
 assert_eq "status not shifted by an embedded TAB" "todo" "$(status_of "$id")"
 assert_contains "text preserved intact" "before	after" "$(zsh "$TD_BIN" show "$id")"
 
@@ -111,7 +111,7 @@ fresh
 zsh "$TD_BIN" add "seed" >/dev/null
 for i in {1..9}; do zsh "$TD_BIN" add "parallel-$i" >/dev/null 2>&1 & done
 wait
-count=$(zsh "$TD_BIN" ls | tail -n +2 | grep -c .)
+count=$(task_rows | grep -c .)
 assert_eq "all 10 concurrent writes survive" "10" "$count"
 
 leftovers=$(find "$TODOLIST_DATA" \( -name '*.lock' -o -name '*.tmp.*' -o -name '*.stale.*' \) | wc -l | tr -d ' ')

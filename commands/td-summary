@@ -1,18 +1,26 @@
-# td-summary - show task counts by status
+# td-summary - task counts by status
 # Autoloaded: file body = function body
+#
+# --oneline is byte-for-byte what v0.2 emitted. The README tells people to put
+# it in ~/.zshrc, so changing its shape would break prompts on upgrade; that is
+# not worth any amount of polish. --glyph is the new compact form.
 
-local -a oneline_opt
-zparseopts -D -E - -oneline=oneline_opt
+local -a oneline_opt glyph_opt
+zparseopts -D -E - -oneline=oneline_opt -glyph=glyph_opt
 
-local use_oneline=0
+local use_oneline=0 use_glyph=0
 (( ${#oneline_opt} )) && use_oneline=1
+(( ${#glyph_opt} ))   && use_glyph=1
 
 _td_storage_init
 
-local tasks_file
-tasks_file="$(_td_storage_list_path)"
+if (( ! ${+functions[_td_ui_init]} )); then
+  autoload -Uz _td_ui && _td_ui
+fi
+[[ -z "${TD_GLYPH[hbar]}" ]] && _td_ui_init
 
-local list_name
+local tasks_file list_name
+tasks_file="$(_td_storage_list_path)"
 list_name="$(_td_storage_active_list)"
 
 local output
@@ -22,26 +30,27 @@ output=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
     var data = JSON.parse(env.objectForKey("JSON_DATA").js);
     if (data.tasks.length === 0) return "__EMPTY__";
     var counts = {};
-    data.tasks.forEach(function(t) {
+    data.tasks.forEach(function (t) {
       counts[t.status] = (counts[t.status] || 0) + 1;
     });
     var lines = [];
-    data.statuses.forEach(function(s) {
-      if (counts[s]) {
-        lines.push(s + "\t" + counts[s]);
-      }
+    data.statuses.forEach(function (s) {
+      if (counts[s]) lines.push(s + "\t" + counts[s]);
     });
     return lines.join("\n");
   }
 ' 2>/dev/null)
 
 if [[ "$output" == "__EMPTY__" ]] || [[ -z "$output" ]]; then
+  (( use_oneline || use_glyph )) && return 0
   _td_success "No tasks in list"
   return 0
 fi
 
+# --- compact forms, for a shell prompt ---
 if (( use_oneline )); then
-  local parts=()
+  local -a parts=()
+  local task_status count
   while IFS=$'\t' read -r task_status count; do
     parts+=("${task_status}:${count}")
   done <<< "$output"
@@ -49,13 +58,103 @@ if (( use_oneline )); then
   return 0
 fi
 
-# Default mode: colored status counts
-printf "  %s%s%s\n" "${TD_COLORS[bold]}" "$list_name" "${TD_COLORS[reset]}"
+if (( use_glyph )); then
+  # A prompt is never a tty check away from being wrong, so this stays plain
+  # unless colour is explicitly forced.
+  local -a parts=()
+  local task_status count g
+  local done_status; done_status="$(_td_resolve_done_status "$tasks_file")"
+  while IFS=$'\t' read -r task_status count; do
+    if [[ "$task_status" == "$done_status" ]]; then g="${TD_GLYPH[done]}"
+    elif [[ "$task_status" == "${${(f)output}[1]%%	*}" ]]; then g="${TD_GLYPH[high]}"
+    else g="${TD_GLYPH[medium]}"; fi
+    parts+=("${g}${count}")
+  done <<< "$output"
+  printf '%s %s\n' "$list_name" "${parts[*]}"
+  return 0
+fi
 
-local total=0
+# --- default: proportional bars ---
+local term_width=${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}
+(( term_width < 40 )) && term_width=80
+
+local -a names counts
+local task_status count total=0 w_name=0
 while IFS=$'\t' read -r task_status count; do
-  printf "    %s%s%s: %s\n" "${TD_COLORS[cyan]}" "$task_status" "${TD_COLORS[reset]}" "$count"
-  total=$((total + count))
+  names+=("$task_status"); counts+=("$count")
+  (( total += count ))
+  (( ${#task_status} > w_name )) && w_name=${#task_status}
 done <<< "$output"
 
-printf "    %s%s%s: %s\n" "${TD_COLORS[dim]}" "total" "${TD_COLORS[reset]}" "$total"
+local done_status; done_status="$(_td_resolve_done_status "$tasks_file")"
+local done_count=0 i
+for (( i = 1; i <= ${#names[@]}; i++ )); do
+  [[ "${names[$i]}" == "$done_status" ]] && done_count=${counts[$i]}
+done
+local pct=0
+(( total > 0 )) && pct=$(( done_count * 100 / total ))
+
+# header
+local left right
+_td_paint accent "$list_name"; left="  $REPLY"
+_td_paint text-faint "${total} task$( (( total == 1 )) || print s ) · ${pct}% complete  "; right="$REPLY"
+_td_width "$left"; local lw=$REPLY
+_td_width "$right"; local rw=$REPLY
+local gap=$(( term_width - lw - rw ))
+(( gap < 1 )) && gap=1
+print -r -- "${left}${(l:$gap:: :)}${right}"
+
+_td_repeat "${TD_GLYPH[hbar]}" $(( term_width - 4 ))
+_td_paint border "  $REPLY  "
+print -r -- "$REPLY"
+
+# bars, all scaled to the same total so column lengths compare directly
+local w_count=${#total}
+# 2 leading spaces + name + 2 + count + 2 + bar must total term_width.
+local bar_width=$(( term_width - 2 - w_name - 2 - w_count - 2 ))
+(( bar_width < 10 )) && bar_width=10
+
+local filled token line
+for (( i = 1; i <= ${#names[@]}; i++ )); do
+  filled=0
+  (( total > 0 )) && filled=$(( counts[i] * bar_width / total ))
+  (( filled == 0 && counts[i] > 0 )) && filled=1
+
+  if [[ "${names[$i]}" == "$done_status" ]]; then token=success
+  elif (( i == 1 )); then token=text-muted
+  else token=warning; fi
+
+  line="  "
+  _td_fit "${names[$i]}" $w_name; _td_paint text "$REPLY"; line+="$REPLY  "
+  _td_fit "${counts[$i]}" $w_count r; _td_paint text-muted "$REPLY"; line+="$REPLY  "
+  _td_repeat "${TD_GLYPH[bar-full]}" $filled; _td_paint "$token" "$REPLY"; line+="$REPLY"
+  _td_repeat "${TD_GLYPH[bar-empty]}" $(( bar_width - filled )); _td_paint text-faint "$REPLY"; line+="$REPLY"
+  print -r -- "$line"
+done
+
+# other lists, because summary is where you notice one you forgot about
+local others
+others=$(TD_DATA_DIR="$TD_DATA" ACTIVE="$list_name" osascript -l JavaScript -e '
+  function run() {
+    var env = $.NSProcessInfo.processInfo.environment;
+    var dir = env.objectForKey("TD_DATA_DIR").js + "/lists";
+    var active = env.objectForKey("ACTIVE").js;
+    var fm = $.NSFileManager.defaultManager;
+    var names = fm.contentsOfDirectoryAtPathError(dir, $()) ;
+    if (!names) return "";
+    var out = [];
+    for (var i = 0; i < names.count; i++) {
+      var n = ObjC.unwrap(names.objectAtIndex(i));
+      if (n !== active) out.push(n);
+    }
+    return out.join(" ");
+  }
+' 2>/dev/null)
+
+if [[ -n "$others" ]]; then
+  _td_repeat "${TD_GLYPH[hbar]}" $(( term_width - 4 ))
+  _td_paint border "  $REPLY  "
+  print -r -- "$REPLY"
+  _td_paint text-faint "  other lists: ${others}"
+  print -r -- "$REPLY"
+fi

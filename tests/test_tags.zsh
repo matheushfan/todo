@@ -210,7 +210,7 @@ assert_contains "ls no filter: shows task two" "Filter task two" "$ls_all"
 assert_contains "ls no filter: shows task three" "Filter task three" "$ls_all"
 
 # Test 19: output includes Tags column header
-assert_contains "ls output: Tags column header" "Tags" "$ls_all"
+assert_contains "ls output: TAGS column header" "TAGS" "$ls_all"
 
 # Test 20: output includes tag values
 assert_contains "ls output: work tag in output" "work" "$ls_all"
