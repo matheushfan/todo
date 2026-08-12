@@ -1,9 +1,18 @@
-# td-ui - interactive board view (zcurses)
+# td-ui - interactive board
 # Autoloaded: file body = function body
 
-local -a _td_ui_args=("$@")
-local checkbox_flag=0
-if [[ " ${_td_ui_args[*]} " == *" --checkbox "* ]]; then
-  checkbox_flag=1
-fi
-_td_interactive_run $checkbox_flag
+local -a checkbox_opt
+zparseopts -D -E - -checkbox=checkbox_opt 2>/dev/null
+
+# The TUI libraries load here rather than in bin/todo: they are needed by this
+# one command, and every other command pays their load cost otherwise.
+autoload -Uz _td_key      && _td_key
+autoload -Uz _td_term     && _td_term
+autoload -Uz _td_layout   && _td_layout
+autoload -Uz _td_tui_draw && _td_tui_draw
+autoload -Uz _td_tui      && _td_tui
+
+# Checkbox mode was a separate render path in v0.2. A two-status list is now
+# just a two-column board, which the same engine already draws, so the flag is
+# accepted and ignored rather than rejected for anyone who has it in an alias.
+_td_tui_run

@@ -1,0 +1,118 @@
+# _td_key - decode one keypress into a symbolic name
+# Autoloaded: file body = function body
+#
+# Reads from stdin, so it can be driven by a pipe in tests. It never opens
+# /dev/tty: everything here is testable by feeding byte sequences through a
+# pipe, with no terminal involved.
+#
+# Sets REPLY to a symbolic name (Up, S-Tab, C-d, Escape, PgDn, a literal
+# character, ...). Returns 1 on timeout or end of input.
+
+typeset -g TD_ESCDELAY=${TD_ESCDELAY:-0.03}
+typeset -g TD_MOUSE_B='' TD_MOUSE_X='' TD_MOUSE_Y=''
+
+# Usage: _td_key_read [timeout_seconds]
+_td_key_read() {
+  local c seq='' code final
+  REPLY=''
+
+  if (( $# )); then
+    read -s -u0 -k 1 -t "$1" c || return 1
+  else
+    read -s -u0 -k 1 c || return 1
+  fi
+
+  # --- not an escape: a plain character, or a control code ---
+  if [[ "$c" != $'\033' ]]; then
+    code=$(( #c ))
+    case "$c" in
+      ($'\r'|$'\n')   REPLY=Enter ;;
+      ($'\t')         REPLY=Tab ;;
+      ($'\177'|$'\b') REPLY=Backspace ;;
+      (' ')           REPLY=Space ;;
+      (*)
+        if (( code >= 1 && code <= 26 )); then
+          local ch=$(( code + 96 ))     # 1 -> a
+          REPLY="C-${(#)ch}"
+        else
+          REPLY="$c"
+        fi ;;
+    esac
+    return 0
+  fi
+
+  # --- ESC seen. Is anything buffered right behind it? ---
+  # A lone ESC and the start of a sequence are indistinguishable except by
+  # timing, which is what TD_ESCDELAY buys.
+  if ! read -s -u0 -k 1 -t "$TD_ESCDELAY" c; then
+    REPLY=Escape; return 0
+  fi
+
+  case "$c" in
+    ($'\033') REPLY=Escape; return 0 ;;
+    (O)  # SS3: application cursor mode
+      read -s -u0 -k 1 -t "$TD_ESCDELAY" c || { REPLY=Escape; return 0; }
+      case "$c" in
+        (A) REPLY=Up ;;   (B) REPLY=Down ;;
+        (C) REPLY=Right ;; (D) REPLY=Left ;;
+        (H) REPLY=Home ;; (F) REPLY=End ;;
+        (P) REPLY=F1 ;;   (Q) REPLY=F2 ;;
+        (R) REPLY=F3 ;;   (S) REPLY=F4 ;;
+        (*) REPLY="SS3-$c" ;;
+      esac
+      return 0 ;;
+    (\[) ;;                       # CSI: fall through
+    (*)  REPLY="M-$c"; return 0 ;;  # Alt-<key>
+  esac
+
+  # --- CSI: gather parameter/intermediate bytes, stop at the final byte ---
+  final=''
+  while read -s -u0 -k 1 -t 0.05 c; do
+    code=$(( #c ))
+    if (( code >= 0x20 && code <= 0x3F )); then
+      seq+="$c"
+    else
+      final="$c"; break
+    fi
+  done
+  [[ -n "$final" ]] || { REPLY=Escape; return 0; }
+
+  # SGR mouse: CSI < b ; x ; y (M press | m release)
+  if [[ "$seq" == \<* && "$final" == [Mm] ]]; then
+    local p="${seq#<}"
+    TD_MOUSE_B="${p%%;*}"; p="${p#*;}"
+    TD_MOUSE_X="${p%%;*}"; TD_MOUSE_Y="${p#*;}"
+    [[ "$final" == M ]] && REPLY=MouseDown || REPLY=MouseUp
+    return 0
+  fi
+
+  # Every pattern is quoted: under EXTENDED_GLOB '~' is an operator, and an
+  # unquoted ';' would end the case arm.
+  case "${seq}${final}" in
+    ('A')           REPLY=Up ;;
+    ('B')           REPLY=Down ;;
+    ('C')           REPLY=Right ;;
+    ('D')           REPLY=Left ;;
+    ('H'|'1~'|'7~') REPLY=Home ;;
+    ('F'|'4~'|'8~') REPLY=End ;;
+    ('5~')          REPLY=PgUp ;;
+    ('6~')          REPLY=PgDn ;;
+    ('2~')          REPLY=Insert ;;
+    ('3~')          REPLY=Delete ;;
+    ('Z')           REPLY=S-Tab ;;
+    ('1;2A')        REPLY=S-Up ;;
+    ('1;2B')        REPLY=S-Down ;;
+    ('1;2C')        REPLY=S-Right ;;
+    ('1;2D')        REPLY=S-Left ;;
+    ('1;5A')        REPLY=C-Up ;;
+    ('1;5B')        REPLY=C-Down ;;
+    ('1;5C')        REPLY=C-Right ;;
+    ('1;5D')        REPLY=C-Left ;;
+    ('11~'|'1;2P')  REPLY=F1 ;;
+    ('12~')         REPLY=F2 ;;
+    ('13~')         REPLY=F3 ;;
+    ('14~')         REPLY=F4 ;;
+    (*)             REPLY="CSI-${seq}${final}" ;;
+  esac
+  return 0
+}

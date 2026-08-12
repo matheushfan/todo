@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.3
 milestone_name: Correctness & Visual Overhaul
-status: in-progress
-stopped_at: Completed phase 18 (ls + summary redesign)
-last_updated: "2026-08-11"
+status: complete
+stopped_at: Completed phase 19 (raw-ANSI TUI; zcurses removed)
+last_updated: "2026-08-12"
 last_activity: 2026-08-11
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 5
-  completed_plans: 4
-  percent: 80
+  completed_plans: 5
+  percent: 100
 ---
 
 # Project State
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md
 
 **Core value:** Gerenciar tasks direto no terminal de forma rapida e visual, sem sair do fluxo de trabalho.
-**Current focus:** Phase 19 — interactive TUI rebuilt on the raw-ANSI core
+**Current focus:** v0.3 hardening — the audit findings still open, listed below
 
 ## Current Position
 
-Phase: 19 (not started)
-Status: phases 15-18 complete and committed; TUI still runs on the old zcurses engine
+Phase: 19 complete
+Status: phases 15-19 complete and committed; zcurses is gone from the tree
 Last activity: 2026-08-11
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## What Shipped in v0.3 So Far
 
@@ -43,6 +43,9 @@ Progress: [████████░░] 80%
 - **`lib/_td_ui`**, one measurement/theme/glyph core shared by every view.
 - **Redesigned static board, `ls` and `summary`**, laid out to exactly 80
   columns, aligned through CJK/emoji/accents.
+- **The TUI rebuilt on raw ANSI**; `lib/_td_interactive` (1114 lines of zcurses)
+  is deleted. Frame composition is pure, so the whole interactive surface is
+  tested without ever allocating a tty.
 
 ## Accumulated Context
 
@@ -64,7 +67,13 @@ Progress: [████████░░] 80%
   marks 0, emoji 2. No wcwidth table needed.
 - [Phase 17]: Rendering helpers return via `REPLY`, not stdout. `$(...)` forks a
   subshell per call: 2.03ms/cell vs 0.043ms.
-- [Phase 17]: The interactive UI will be raw ANSI, not zcurses. `zcurses attr`
+- [Phase 19]: Mutations key off the FULL uuid (payload field 7), never the
+  4-char display prefix in field 1. Using the prefix as an identity matched
+  nothing and failed silently -- the tests passed because they exercised
+  composition with synthetic data, not the write path. Only running it caught it.
+- [Phase 19]: Frame composition is pure and returns both the frame string and
+  the line array, so tests assert per-line geometry without re-parsing escapes.
+- [Phase 17]: The interactive UI is raw ANSI, not zcurses. `zcurses attr`
   only accepts the 8 named colours, which forces a black background and fights
   the user's theme. A raw-ANSI prototype was verified to restore terminal state
   byte-identically on exit.
@@ -75,11 +84,9 @@ Progress: [████████░░] 80%
 
 ### Blockers/Concerns
 
-- Phase 19 (TUI rewrite) is the largest remaining piece: `lib/_td_interactive`
-  is 1114 lines of zcurses and needs porting onto `_td_ui` + raw ANSI.
-- Salvaged reference code for that port: a working raw-ANSI prototype and a key
-  decoder (arrows, Home/End, PgUp/PgDn, Shift-Tab, Alt-, Ctrl-, SGR mouse) live
-  in the session scratchpad under `ansi-tui/`.
+- Not yet built from the spec: live filter (`/`), undo/redo, the `:` command
+  line, `todo.conf`, sort cycling and theme cycling. The keymap reserves their
+  keys, so adding them will not collide.
 - Audit findings not yet addressed: dangling `active_list` handled
   inconsistently across commands; `bulk done --status <invalid>` succeeds
   silently while `bulk move` errors; `tag add` prints literal `'\''` escapes;

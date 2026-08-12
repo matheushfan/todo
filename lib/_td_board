@@ -12,6 +12,10 @@
 # part you actually read -- was the first thing truncated.
 
 # Fetch every field the board needs in ONE osascript call.
+#
+# Field 1 is a SHORT id for display; field 7 is the full UUID. List surfaces
+# show a prefix, but anything that mutates needs a stable handle -- using the
+# 4-char prefix as an identity silently matches nothing.
 # Fields are 0x1F separated (never TAB: TAB is IFS whitespace, so zsh read
 # collapses runs of it and empty fields silently shift the columns).
 _td_board_fetch() {
@@ -38,7 +42,7 @@ _td_board_fetch() {
             var tags = (t.tags && t.tags.length) ? t.tags.join(" ") : "";
             var text = String(t.text || "").replace(/[\r\n\t]+/g, " ");
             return [t.id.substring(0, 4).toLowerCase(), t.priority || "",
-                    tags, text, t.ref || "", age(t.updated || t.created)].join(U);
+                    tags, text, t.ref || "", age(t.updated || t.created), t.id].join(U);
           });
         out.push(rows.join(R));
       });

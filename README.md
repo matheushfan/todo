@@ -84,16 +84,25 @@ todo ui --checkbox                            # checkbox mode (simple lists)
 
 | Key | Action |
 |-----|--------|
-| `j/k` | Move up/down |
-| `h/l` | Move left/right between columns |
-| `s` | Cycle status (todo → doing → done) |
-| `d` | Mark done |
-| `x` | Delete task |
-| `o` | Open ref URL in browser |
-| `?` | Help overlay |
-| `q` | Quit |
+| `j` `k` | Move down / up |
+| `h` `l` | Move between columns (each remembers its own row) |
+| `g` `G` | First / last task in the column |
+| `1`–`9` | Jump to column N |
+| `Space` `d` | Mark done |
+| `s` | Cycle status |
+| `p` | Cycle priority |
+| `m` | Toggle mark (then any verb applies to all marks) |
+| `a` `e` | Add / edit a task without leaving the board |
+| `x` | Delete |
+| `o` `y` | Open the ref URL / yank the id to the clipboard |
+| `R` | Reload from disk |
+| `?` `q` | Help / quit |
 
-Arrow keys also work for navigation.
+Arrow keys, `Home`/`End`, `PgUp`/`PgDn` and `Tab` work too.
+
+Marks are the multi-select: press `m` on several tasks and then `d`, `x` or `p`
+applies to all of them. `Esc` clears them. They live only in the running
+process and are never written to your data.
 
 ### Tasks
 
@@ -246,11 +255,23 @@ pinned to 256 because it advertises truecolor it cannot actually render.
 - Entry point: `bin/todo` — sets up autoload, installs the lock traps, dispatches subcommands
 - Commands: `commands/td-*` — one file per command, loaded on demand via zsh `fpath`
 - Libraries: `lib/_td_*` — `_td_ui` (measurement, theme, glyphs), `_td_storage`
-  (JXA JSON engine), `_td_lock` (write locking), `_td_board` (kanban renderer),
-  `_td_interactive` (TUI)
+  (JXA JSON engine), `_td_lock` (write locking), `_td_board` (static renderer),
+  `_td_layout` (geometry), `_td_key` (key decoding), `_td_term` (raw mode and
+  the alternate screen), `_td_tui_draw` (frame composition), `_td_tui` (state
+  and input loop)
 - Storage: `osascript -l JavaScript` (JXA) for JSON parsing — built into every Mac since 2014
 
-Two details worth knowing if you read the source. Text is measured with zsh's
+The interactive board is raw ANSI, not `zcurses`. `zcurses attr` only accepts
+the eight named colours in `fg/bg` form, which forces a black background and
+caps the palette at eight — it fights whatever theme your terminal already has.
+Raw ANSI also means the static and interactive views share one rendering core
+instead of two that drift apart.
+
+That split has a second payoff: frame composition (`_td_tui_draw`) is a pure
+function of state that touches no terminal, so the entire visual surface is
+covered by tests that never allocate a tty.
+
+Two more details worth knowing if you read the source. Text is measured with zsh's
 own display width, `${(m)#s}`, so CJK counts two columns and combining marks
 count zero — that is why the board stays aligned through emoji and accents.
 And the rendering helpers return through `REPLY` rather than stdout, because
@@ -270,7 +291,7 @@ zsh tests/test_board.zsh
 zsh tests/test_storage.zsh
 ```
 
-346 tests across 14 suites.
+409 tests across 15 suites.
 
 ## Contributing
 

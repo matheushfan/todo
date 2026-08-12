@@ -1,0 +1,443 @@
+# _td_tui - interactive board: state, input loop, actions
+# Autoloaded: file body = function body
+#
+# Replaces the zcurses engine. zcurses `attr` only accepts the eight named
+# colours in fg/bg form, which forced a black background and capped the palette
+# at 8 -- the reason the old board fought the user's terminal theme. Raw ANSI
+# also means one rendering core for the static and interactive views instead of
+# two that drift apart.
+#
+# The split is deliberate: everything here is state and I/O, while frame
+# composition lives in _td_tui_draw and is pure, so the visual surface can be
+# tested without a terminal.
+
+typeset -ga _TD_UI_STATUSES=()
+typeset -gA _TD_UI_COL=()
+typeset -gA _TD_UI_COUNT=()
+typeset -gA _TD_UI_CUR_ROW=()
+typeset -gA _TD_UI_TOP=()
+typeset -gA _TD_UI_MARKS=()
+typeset -g  _TD_UI_CUR_COL=1
+typeset -g  _TD_UI_LIST=''
+typeset -g  _TD_UI_FILE=''
+typeset -g  _TD_UI_MSG=''
+typeset -g  _TD_UI_PROMPT=''
+typeset -g  _TD_UI_INPUT=''
+typeset -g  _TD_UI_DONE_COUNT=0
+typeset -g  _TD_UI_QUIT=0
+
+# ---------------------------------------------------------------- data
+# One JXA call fills every column. Records are 0x1F separated, rows 0x1E,
+# columns 0x1D -- never TAB, which zsh read collapses.
+_td_tui_load() {
+  local raw
+  raw="$(_td_board_fetch "$_TD_UI_FILE")" || return 1
+  [[ -z "$raw" ]] && return 1
+
+  local -a groups=("${(@ps:\x1d:)raw}")
+  _TD_UI_STATUSES=("${(@ps:\x1f:)groups[1]}")
+
+  _TD_UI_COL=(); _TD_UI_COUNT=()
+  local c r block
+  local -a rows
+  for (( c = 1; c <= ${#_TD_UI_STATUSES[@]}; c++ )); do
+    block="${groups[$((c + 1))]}"
+    if [[ -z "$block" ]]; then
+      _TD_UI_COUNT[$c]=0
+    else
+      rows=("${(@ps:\x1e:)block}")
+      _TD_UI_COUNT[$c]=${#rows[@]}
+      for (( r = 1; r <= ${#rows[@]}; r++ )); do
+        _TD_UI_COL[$c,$r]="${rows[$r]}"
+      done
+    fi
+    (( ${_TD_UI_CUR_ROW[$c]:-0} < 1 )) && _TD_UI_CUR_ROW[$c]=1
+    (( ${_TD_UI_TOP[$c]:-0} < 1 ))     && _TD_UI_TOP[$c]=1
+  done
+
+  _TD_UI_DONE_COUNT=${_TD_UI_COUNT[${#_TD_UI_STATUSES[@]}]:-0}
+  _td_tui_clamp
+}
+
+# Keep the cursor and scroll window inside the data after any mutation.
+_td_tui_clamp() {
+  local c=$_TD_UI_CUR_COL
+  local n=${#_TD_UI_STATUSES[@]}
+  (( c < 1 )) && c=1
+  (( c > n )) && c=$n
+  _TD_UI_CUR_COL=$c
+
+  local count=${_TD_UI_COUNT[$c]:-0}
+  local cur=${_TD_UI_CUR_ROW[$c]:-1}
+  (( cur > count )) && cur=$count
+  (( cur < 1 )) && cur=1
+  _TD_UI_CUR_ROW[$c]=$cur
+
+  _td_layout_scroll "$cur" "$count" "$TD_L_ROWS"
+  _TD_UI_TOP[$c]=$REPLY
+}
+
+_td_tui_selected_field() {   # _td_tui_selected_field <index> -> REPLY
+  local c=$_TD_UI_CUR_COL r=${_TD_UI_CUR_ROW[$_TD_UI_CUR_COL]:-1}
+  local rec="${_TD_UI_COL[$c,$r]}"
+  if [[ -z "$rec" ]]; then REPLY=''; return 1; fi
+  local -a f=("${(@ps:\x1f:)rec}")
+  REPLY="${f[$1]}"
+}
+
+# Ids the next verb applies to: the marks if any, else the cursor task.
+# Always field 7, the full UUID -- field 1 is a 4-char display prefix and
+# matching on it silently mutates nothing.
+_td_tui_targets() {
+  typeset -ga REPLY_IDS=()
+  if (( ${#_TD_UI_MARKS[@]} > 0 )); then
+    REPLY_IDS=("${(@k)_TD_UI_MARKS}")
+  else
+    _td_tui_selected_field 7 && REPLY_IDS=("$REPLY")
+  fi
+  (( ${#REPLY_IDS[@]} > 0 ))
+}
+
+# ---------------------------------------------------------------- navigation
+_td_tui_move_row() {
+  local delta="$1"
+  local c=$_TD_UI_CUR_COL
+  local count=${_TD_UI_COUNT[$c]:-0}
+  (( count == 0 )) && return
+  local cur=$(( ${_TD_UI_CUR_ROW[$c]:-1} + delta ))
+  # Wrap, so j at the bottom returns to the top rather than doing nothing.
+  (( cur > count )) && cur=1
+  (( cur < 1 )) && cur=$count
+  _TD_UI_CUR_ROW[$c]=$cur
+  _td_tui_clamp
+}
+
+_td_tui_goto_row() {
+  local c=$_TD_UI_CUR_COL
+  local count=${_TD_UI_COUNT[$c]:-0}
+  (( count == 0 )) && return
+  local target="$1"
+  (( target < 1 )) && target=1
+  (( target > count )) && target=$count
+  _TD_UI_CUR_ROW[$c]=$target
+  _td_tui_clamp
+}
+
+# Columns keep their own cursor row, so moving away and back returns you to
+# where you were rather than to the top.
+_td_tui_move_col() {
+  local delta="$1"
+  local n=${#_TD_UI_STATUSES[@]}
+  (( n == 0 )) && return
+  local c=$(( _TD_UI_CUR_COL + delta ))
+  (( c > n )) && c=1
+  (( c < 1 )) && c=$n
+  _TD_UI_CUR_COL=$c
+  _td_tui_clamp
+}
+
+# ---------------------------------------------------------------- mutations
+_td_tui_apply_status() {   # <new-status> <id>...
+  local new="$1"; shift
+  local id
+  for id in "$@"; do
+    export TASK_ID="$id" NEW_STATUS="$new"
+    _td_storage_modify "$_TD_UI_FILE" '
+      var env = $.NSProcessInfo.processInfo.environment;
+      var tid = env.objectForKey("TASK_ID").js;
+      var ns = env.objectForKey("NEW_STATUS").js;
+      var idx = data.tasks.findIndex(function (t) { return t.id === tid; });
+      if (idx >= 0) { data.tasks[idx].status = ns; data.tasks[idx].updated = new Date().toISOString(); }
+    ' >/dev/null 2>&1
+    unset TASK_ID NEW_STATUS
+  done
+}
+
+_td_tui_action_done() {
+  _td_tui_targets || { _TD_UI_MSG='no task selected'; return; }
+  local -a ids=("${REPLY_IDS[@]}")
+  local done_status
+  done_status="$(_td_resolve_done_status "$_TD_UI_FILE")"
+  _td_tui_apply_status "$done_status" "${ids[@]}"
+  _TD_UI_MARKS=()
+  _TD_UI_MSG="marked done: ${#ids}"
+  _td_tui_load
+}
+
+_td_tui_action_cycle() {
+  _td_tui_targets || { _TD_UI_MSG='no task selected'; return; }
+  local -a ids=("${REPLY_IDS[@]}")
+  local n=${#_TD_UI_STATUSES[@]}
+  local next=$(( _TD_UI_CUR_COL % n + 1 ))
+  _td_tui_apply_status "${_TD_UI_STATUSES[$next]}" "${ids[@]}"
+  local followed=0
+  (( ${#_TD_UI_MARKS[@]} == 0 )) && followed=1
+  _TD_UI_MARKS=()
+  _TD_UI_MSG="moved to ${_TD_UI_STATUSES[$next]}"
+  _td_tui_load
+  # Follow a single task into its new column; with marks there is nothing
+  # sensible to follow.
+  (( followed )) && { _TD_UI_CUR_COL=$next; _td_tui_clamp; }
+}
+
+_td_tui_action_delete() {
+  _td_tui_targets || { _TD_UI_MSG='no task selected'; return; }
+  local -a ids=("${REPLY_IDS[@]}")
+  local id
+  for id in "${ids[@]}"; do
+    export TASK_ID="$id"
+    _td_storage_modify "$_TD_UI_FILE" '
+      var tid = $.NSProcessInfo.processInfo.environment.objectForKey("TASK_ID").js;
+      data.tasks = data.tasks.filter(function (t) { return t.id !== tid; });
+    ' >/dev/null 2>&1
+    unset TASK_ID
+  done
+  _TD_UI_MARKS=()
+  _TD_UI_MSG="deleted ${#ids}"
+  _td_tui_load
+}
+
+_td_tui_action_priority() {
+  _td_tui_targets || { _TD_UI_MSG='no task selected'; return; }
+  local -a ids=("${REPLY_IDS[@]}")
+  local cur=''
+  _td_tui_selected_field 2 && cur="$REPLY"
+  local next
+  case "$cur" in
+    (high)   next=medium ;;
+    (medium) next=low ;;
+    (*)      next=high ;;
+  esac
+  local id
+  for id in "${ids[@]}"; do
+    export TASK_ID="$id" NEW_PRIO="$next"
+    _td_storage_modify "$_TD_UI_FILE" '
+      var env = $.NSProcessInfo.processInfo.environment;
+      var tid = env.objectForKey("TASK_ID").js;
+      var np = env.objectForKey("NEW_PRIO").js;
+      var idx = data.tasks.findIndex(function (t) { return t.id === tid; });
+      if (idx >= 0) { data.tasks[idx].priority = np; data.tasks[idx].updated = new Date().toISOString(); }
+    ' >/dev/null 2>&1
+    unset TASK_ID NEW_PRIO
+  done
+  _TD_UI_MARKS=()
+  _TD_UI_MSG="priority: ${next}"
+  _td_tui_load
+}
+
+_td_tui_action_mark() {
+  local id
+  _td_tui_selected_field 7 || return
+  id="$REPLY"
+  if [[ -n "${_TD_UI_MARKS[$id]-}" ]]; then
+    unset "_TD_UI_MARKS[$id]"
+  else
+    _TD_UI_MARKS[$id]=1
+  fi
+  _td_tui_move_row 1
+}
+
+_td_tui_action_open() {
+  local ref
+  _td_tui_selected_field 5 || { _TD_UI_MSG='no task selected'; return; }
+  ref="$REPLY"
+  if [[ -z "$ref" ]]; then _TD_UI_MSG='task has no ref'; return; fi
+  open "$ref" >/dev/null 2>&1
+  _TD_UI_MSG="opened ${ref}"
+}
+
+_td_tui_action_yank() {
+  local id
+  _td_tui_selected_field 7 || { _TD_UI_MSG="no task selected"; return; }
+  id="$REPLY"
+  if print -rn -- "$id" | pbcopy 2>/dev/null; then
+    _TD_UI_MSG="yanked ${id:0:8}"
+  else
+    _TD_UI_MSG="could not reach the clipboard"
+  fi
+}
+
+# ---------------------------------------------------------------- prompts
+# Reads a line inside the TUI, redrawing each keystroke so the frame stays
+# whole. Returns 1 if cancelled.
+_td_tui_prompt() {
+  _TD_UI_PROMPT="$1"
+  _TD_UI_INPUT="${2-}"
+  local key
+  while :; do
+    _td_tui_render
+    _td_key_read || continue
+    key="$REPLY"
+    case "$key" in
+      (Enter)     _TD_UI_PROMPT=''; REPLY="$_TD_UI_INPUT"; return 0 ;;
+      (Escape)    _TD_UI_PROMPT=''; _TD_UI_INPUT=''; return 1 ;;
+      (Backspace) _TD_UI_INPUT="${_TD_UI_INPUT%?}" ;;
+      (Space)     _TD_UI_INPUT+=' ' ;;
+      (C-u)       _TD_UI_INPUT='' ;;
+      (?)         [[ ${#key} == 1 ]] && _TD_UI_INPUT+="$key" ;;
+    esac
+  done
+}
+
+_td_tui_action_add() {
+  _td_tui_prompt 'add: ' || { _TD_UI_MSG=''; return; }
+  local text="$REPLY"
+  [[ -z "$text" ]] && return
+  local st="${_TD_UI_STATUSES[$_TD_UI_CUR_COL]}"
+  TASK_TAGS='' TASK_REF='' _td_storage_add_task "$_TD_UI_FILE" "$text" "$st" medium >/dev/null 2>&1
+  _TD_UI_MSG='added'
+  _td_tui_load
+}
+
+_td_tui_action_edit() {
+  local id old
+  _td_tui_selected_field 7 || { _TD_UI_MSG="no task selected"; return; }
+  id="$REPLY"
+  _td_tui_selected_field 4; old="$REPLY"
+  _td_tui_prompt 'edit: ' "$old" || { _TD_UI_MSG=''; return; }
+  local text="$REPLY"
+  [[ -z "$text" ]] && return
+  export TASK_ID="$id" NEW_TEXT="$text"
+  _td_storage_modify "$_TD_UI_FILE" '
+    var env = $.NSProcessInfo.processInfo.environment;
+    var tid = env.objectForKey("TASK_ID").js;
+    var txt = env.objectForKey("NEW_TEXT").js;
+    var idx = data.tasks.findIndex(function (t) { return t.id === tid; });
+    if (idx >= 0) { data.tasks[idx].text = txt; data.tasks[idx].updated = new Date().toISOString(); }
+  ' >/dev/null 2>&1
+  unset TASK_ID NEW_TEXT
+  _TD_UI_MSG='edited'
+  _td_tui_load
+}
+
+# ---------------------------------------------------------------- help
+_td_tui_help() {
+  local -a rows=(
+    "MOVE"
+    "  j k        down / up            h l        column left / right"
+    "  g G        first / last         Tab        next column"
+    "  1-9        focus column N"
+    ""
+    "ACT  (applies to marks if any, otherwise the cursor task)"
+    "  Space      toggle done          d          set done"
+    "  s          cycle status         p          cycle priority"
+    "  a          add task             e          edit title"
+    "  x          delete               m          toggle mark"
+    "  o          open ref URL         y          yank id to clipboard"
+    ""
+    "VIEW"
+    "  R          reload from disk     C-l        redraw"
+    "  ?          this help            q          quit"
+    ""
+    "  Priority   ${TD_GLYPH[high]} high   ${TD_GLYPH[medium]} medium   ${TD_GLYPH[low]} low"
+    "  Gutter     ${TD_GLYPH[cursor]} cursor   ${TD_GLYPH[marked]} marked   ${TD_GLYPH[cursor-marked]} both"
+  )
+
+  local out="" i line
+  _td_term_clear
+  for (( i = 1; i <= ${#rows[@]}; i++ )); do
+    line="${rows[$i]}"
+    if [[ "$line" == [A-Z]* ]]; then
+      _td_paint accent "$line"
+    else
+      _td_paint text "$line"
+    fi
+    out+=$'\033['"$(( i + 1 ));3H${REPLY}"
+  done
+  _td_paint text-faint "press any key"
+  out+=$'\033['"$(( ${#rows[@]} + 3 ));3H${REPLY}"
+  print -rn -- "$out"
+  _td_key_read
+  _TD_UI_MSG=''
+}
+
+# ---------------------------------------------------------------- render
+_td_tui_render() {
+  _td_term_size
+  _td_layout_compute "$TD_COLS" "$TD_ROWS" "${#_TD_UI_STATUSES[@]}" 1 || {
+    _td_term_frame "${TD_L_ERR}"
+    return
+  }
+  _td_tui_clamp
+  _td_tui_compose
+  _td_term_frame "$REPLY"
+}
+
+# ---------------------------------------------------------------- main loop
+# Usage: _td_tui_run
+_td_tui_run() {
+  [[ -t 0 && -t 1 ]] || { _td_error "interactive mode needs a terminal"; return 1; }
+
+  _td_storage_init || return 1
+  _TD_UI_FILE="$(_td_storage_list_path)" || return 1
+  _TD_UI_LIST="$(_td_storage_active_list)"
+
+  (( ${+functions[_td_ui_init]} )) || { autoload -Uz _td_ui && _td_ui; }
+  [[ -z "${TD_GLYPH[hbar]}" ]] && _td_ui_init always
+
+  _td_tui_load || { _td_error "failed to read tasks"; return 1; }
+
+  _td_term_size
+  if ! _td_layout_compute "$TD_COLS" "$TD_ROWS" "${#_TD_UI_STATUSES[@]}" 1; then
+    _td_error "$TD_L_ERR"
+    return 2
+  fi
+
+  # Restore the terminal on every exit path, including a signal. The traps are
+  # installed here rather than in _td_term because a trap set inside a function
+  # is function-local in zsh: installed one frame deeper it would fire on that
+  # function's return and restore the terminal mid-session.
+  {
+    _td_term_enter
+    TRAPWINCH() { _TD_RESIZED=1 }
+
+    _td_tui_render
+
+    local key
+    while (( ! _TD_UI_QUIT )); do
+      if ! _td_key_read 0.2; then
+        # Timed out: the only thing worth checking is a resize.
+        (( _TD_RESIZED )) && { _TD_RESIZED=0; _td_tui_render; }
+        continue
+      fi
+      key="$REPLY"
+      _TD_UI_MSG=''
+
+      case "$key" in
+        (q|C-c)        _TD_UI_QUIT=1 ;;
+        (j|Down)       _td_tui_move_row 1 ;;
+        (k|Up)         _td_tui_move_row -1 ;;
+        (h|Left)       _td_tui_move_col -1 ;;
+        (l|Right|Tab)  _td_tui_move_col 1 ;;
+        (S-Tab)        _td_tui_move_col -1 ;;
+        (g|Home)       _td_tui_goto_row 1 ;;
+        (G|End)        _td_tui_goto_row ${_TD_UI_COUNT[$_TD_UI_CUR_COL]:-1} ;;
+        (PgDn|C-d)     _td_tui_move_row $(( TD_L_ROWS / 2 )) ;;
+        (PgUp|C-u)     _td_tui_move_row -$(( TD_L_ROWS / 2 )) ;;
+        ([1-9])        (( key <= ${#_TD_UI_STATUSES[@]} )) && { _TD_UI_CUR_COL=$key; _td_tui_clamp; } ;;
+        (Space)        _td_tui_action_done ;;
+        (d)            _td_tui_action_done ;;
+        (s)            _td_tui_action_cycle ;;
+        (p)            _td_tui_action_priority ;;
+        (m)            _td_tui_action_mark ;;
+        (Escape)       _TD_UI_MARKS=() ;;
+        (a)            _td_tui_action_add ;;
+        (e)            _td_tui_action_edit ;;
+        (x)            _td_tui_action_delete ;;
+        (o)            _td_tui_action_open ;;
+        (y)            _td_tui_action_yank ;;
+        (R)            _td_tui_load; _TD_UI_MSG='reloaded' ;;
+        (C-l)          _td_term_clear ;;
+        ('?')          _td_tui_help ;;
+      esac
+
+      (( _TD_UI_QUIT )) && break
+      (( _TD_RESIZED )) && _TD_RESIZED=0
+      _td_tui_render
+    done
+  } always {
+    unfunction TRAPWINCH 2>/dev/null
+    _td_term_leave
+  }
+  return 0
+}

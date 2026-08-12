@@ -1,0 +1,83 @@
+# _td_term - raw mode, alternate screen, synchronized output, size, traps
+# Autoloaded: file body = function body
+#
+# Everything that touches the terminal lives here, and nothing else in the tool
+# does. That split is what lets the frame composition in _td_tui_draw be tested
+# with no terminal at all.
+#
+# Ported from a prototype that was verified to restore the terminal byte for
+# byte: `stty -g` captured before and after showed no field changed.
+
+zmodload zsh/system 2>/dev/null
+
+typeset -g _TD_STTY_SAVE=''
+typeset -g _TD_TERM_ACTIVE=0
+typeset -g TD_TERM_MOUSE=${TD_TERM_MOUSE:-0}
+typeset -g TD_ROWS=25 TD_COLS=80
+typeset -g _TD_RESIZED=0
+
+# Enter the full-screen state.
+_td_term_enter() {
+  _TD_STTY_SAVE="$(stty -g)"
+  # -icanon -echo: deliver each keystroke immediately, do not echo it.
+  # Not `raw`, so the terminal keeps translating signals -- Ctrl-C still
+  # raises INT, which the trap turns into a clean restore.
+  stty -icanon -echo min 1 time 0
+
+  local s=''
+  s+=$'\033[?1049h'   # alternate screen: the user's scrollback is untouched
+  s+=$'\033[?25l'     # hide cursor
+  s+=$'\033[?7l'      # no autowrap, so writing the last cell never scrolls
+  (( TD_TERM_MOUSE )) && s+=$'\033[?1000h\033[?1006h'
+  print -rn -- "$s"
+  _TD_TERM_ACTIVE=1
+}
+
+# Leave it. Safe to call twice; safe to call when enter never ran.
+_td_term_leave() {
+  (( _TD_TERM_ACTIVE )) || return 0
+  _TD_TERM_ACTIVE=0
+  local s=''
+  (( TD_TERM_MOUSE )) && s+=$'\033[?1006l\033[?1000l'
+  s+=$'\033[?2026l'   # never leave synchronized output latched on
+  s+=$'\033[?7h'      # autowrap back on
+  s+=$'\033[0m'       # drop any attribute
+  s+=$'\033[?25h'     # cursor back
+  s+=$'\033[?1049l'   # back to the primary screen
+  print -rn -- "$s"
+  [[ -n "$_TD_STTY_SAVE" ]] && stty "$_TD_STTY_SAVE"
+  _TD_STTY_SAVE=''
+  return 0
+}
+
+# Current size. $LINES/$COLUMNS are maintained by zsh, but they are empty in
+# some non-interactive contexts, so fall back to stty and then to 80x25.
+_td_term_size() {
+  TD_ROWS=${LINES:-0}
+  TD_COLS=${COLUMNS:-0}
+  if (( TD_ROWS < 2 || TD_COLS < 8 )); then
+    local sz
+    sz="$(stty size 2>/dev/null)"
+    if [[ -n "$sz" ]]; then
+      TD_ROWS="${sz%% *}"
+      TD_COLS="${sz##* }"
+    fi
+  fi
+  (( TD_ROWS > 0 )) || TD_ROWS=25
+  (( TD_COLS > 0 )) || TD_COLS=80
+  return 0
+}
+
+# Write one fully composed frame.
+#
+# The frame is emitted as a single write bracketed by synchronized-output
+# markers, so the terminal swaps it in atomically instead of showing it being
+# painted. Terminals that do not implement mode 2026 ignore the markers, so
+# there is no probe and no fallback path.
+_td_term_frame() {
+  print -rn -- $'\033[?2026h'$'\033[H'"$1"$'\033[?2026l'
+}
+
+_td_term_clear() {
+  print -rn -- $'\033[2J\033[H'
+}

@@ -1,0 +1,318 @@
+# _td_tui_draw - compose one TUI frame into a string
+# Autoloaded: file body = function body
+#
+# Pure: reads state globals, writes REPLY, touches no terminal and forks
+# nothing. That is what makes the whole interactive surface testable -- the
+# suite asserts every composed line is exactly TD_L_W columns wide without ever
+# allocating a tty.
+#
+# State it reads (owned by _td_tui):
+#   _TD_UI_STATUSES  statuses, in order
+#   _TD_UI_COL       assoc "col,row" -> id US pri US tags US text US ref US age
+#   _TD_UI_COUNT     assoc col -> number of rows
+#   _TD_UI_CUR_COL   focused column
+#   _TD_UI_CUR_ROW   assoc col -> cursor row within that column
+#   _TD_UI_TOP       assoc col -> first visible row
+#   _TD_UI_MARKS     assoc task-id -> 1
+#   _TD_UI_LIST      active list name
+#   _TD_UI_MSG       transient message for the command line
+#   _TD_UI_PROMPT    when set, the command line becomes an input line
+
+typeset -g TD_US=$'\x1f'
+
+# Gutter glyph for one row: cursor and mark are independent, so four states.
+# _td_tui_gutter <is_cursor> <is_marked> -> REPLY
+_td_tui_gutter() {
+  if   (( $1 && $2 )); then REPLY="${TD_GLYPH[cursor-marked]}"
+  elif (( $1 ));       then REPLY="${TD_GLYPH[cursor]}"
+  elif (( $2 ));       then REPLY="${TD_GLYPH[marked]}"
+  else                      REPLY=' '
+  fi
+}
+
+# Priority glyph plus its token. _td_tui_prio <priority> -> REPLY, REPLY_TOKEN
+_td_tui_prio() {
+  case "$1" in
+    (high) REPLY="${TD_GLYPH[high]}";   typeset -g REPLY_TOKEN=danger ;;
+    (low)  REPLY="${TD_GLYPH[low]}";    typeset -g REPLY_TOKEN=prio-low ;;
+    (*)    REPLY="${TD_GLYPH[medium]}"; typeset -g REPLY_TOKEN=warning ;;
+  esac
+}
+
+# A left cluster and a right cluster on one line exactly TD_L_W wide.
+# _td_tui_lr <left> <right> -> REPLY
+_td_tui_lr() {
+  local l="$1" r="$2" lw rw gap
+  _td_width "$l"; lw=$REPLY
+  _td_width "$r"; rw=$REPLY
+  gap=$(( TD_L_W - lw - rw ))
+  if (( gap < 1 )); then
+    # Right cluster wins the squeeze: it holds the counts.
+    _td_trunc "$l" $(( TD_L_W - rw - 1 ))
+    l="$REPLY"
+    _td_width "$l"; lw=$REPLY
+    gap=$(( TD_L_W - lw - rw ))
+    (( gap < 0 )) && gap=0
+  fi
+  REPLY="${l}${(l:$gap:: :)}${r}"
+}
+
+# --- row 1: context bar ---
+_td_tui_row_context() {
+  local -a bits=()
+  local i total=0
+  for (( i = 1; i <= ${#_TD_UI_STATUSES[@]}; i++ )); do
+    local n=${_TD_UI_COUNT[$i]:-0}
+    bits+=("${n} ${_TD_UI_STATUSES[$i]}")
+    (( total += n ))
+  done
+
+  local left right
+  _td_paint accent " ${_TD_UI_LIST}"; left="$REPLY"
+  _td_paint text-faint "  ${(j: · :)bits}"; left+="$REPLY"
+
+  # Completion bar: 8 cells, so it reads as a proportion at a glance without
+  # competing with the board for width.
+  local done_n=${_TD_UI_DONE_COUNT:-0}
+  local pct=0
+  (( total > 0 )) && pct=$(( done_n * 100 / total ))
+  local filled=$(( pct * 8 / 100 ))
+  _td_repeat "${TD_GLYPH[bar-full]}" "$filled";      local bar="$REPLY"
+  _td_repeat "${TD_GLYPH[bar-empty]}" $(( 8 - filled )); local rest="$REPLY"
+
+  _td_paint text-muted "${pct}% "; right="$REPLY"
+  _td_paint accent "$bar";         right+="$REPLY"
+  _td_paint text-faint "$rest";    right+="$REPLY"
+  _td_paint text-faint "  ? keys "; right+="$REPLY"
+
+  _td_tui_lr "$left" "$right"
+}
+
+# --- row 2: column headers ---
+_td_tui_row_headers() {
+  local out="" i
+  for (( i = 1; i <= ${#TD_L_COLW[@]}; i++ )); do
+    local cw=${TD_L_COLW[$i]}
+    local n=${_TD_UI_COUNT[$i]:-0}
+    local name="${_TD_UI_STATUSES[$i]:u}"
+
+    _td_fit "$name" $(( cw - 3 - ${#n} ))
+    if (( i == _TD_UI_CUR_COL )); then
+      _td_paint accent "$REPLY";     out+="  ${TD_T[bold]}${REPLY}${TD_T[reset]}"
+      _td_paint accent "$n";         out+="${REPLY} "
+    else
+      _td_paint text "$REPLY";       out+="  $REPLY"
+      _td_paint text-faint "$n";     out+="${REPLY} "
+    fi
+    (( i < ${#TD_L_COLW[@]} )) && { _td_paint border "${TD_GLYPH[vbar]}"; out+="$REPLY"; }
+  done
+  REPLY="$out"
+}
+
+# --- a horizontal rule, with the focused column's segment highlighted ---
+# _td_tui_rule <junction-glyph> -> REPLY
+_td_tui_rule() {
+  local junction="$1" out="" i
+  for (( i = 1; i <= ${#TD_L_COLW[@]}; i++ )); do
+    _td_repeat "${TD_GLYPH[hbar]}" "${TD_L_COLW[$i]}"
+    # Focus is carried by colour, never by a heavier glyph: a heavier rule
+    # would break the junction where it meets its neighbour.
+    if (( i == _TD_UI_CUR_COL )); then
+      _td_paint border-focus "$REPLY"
+    else
+      _td_paint border "$REPLY"
+    fi
+    out+="$REPLY"
+    (( i < ${#TD_L_COLW[@]} )) && { _td_paint border "$junction"; out+="$REPLY"; }
+  done
+  REPLY="$out"
+}
+
+# --- one task row across every column ---
+# _td_tui_row_tasks <screen-row-index> -> REPLY
+_td_tui_row_tasks() {
+  local sr="$1" out="" i
+  for (( i = 1; i <= ${#TD_L_COLW[@]}; i++ )); do
+    local cw=${TD_L_COLW[$i]}
+    local count=${_TD_UI_COUNT[$i]:-0}
+    local top=${_TD_UI_TOP[$i]:-1}
+    local r=$(( top + sr - 1 ))
+
+    if (( r > count || count == 0 )); then
+      out+="${(l:$cw:: :)}"
+    elif (( sr == TD_L_ROWS && count > top + TD_L_ROWS - 1 )); then
+      # Last visible row of a clipped column becomes the overflow marker.
+      local hidden=$(( count - (top + TD_L_ROWS - 1) + 1 ))
+      _td_fit "   +${hidden} more" "$cw"
+      _td_paint text-faint "$REPLY"; out+="$REPLY"
+    else
+      _td_tui_cell "$i" "$r" "$cw"
+      out+="$REPLY"
+    fi
+
+    (( i < ${#TD_L_COLW[@]} )) && { _td_paint border "${TD_GLYPH[vbar]}"; out+="$REPLY"; }
+  done
+  REPLY="$out"
+}
+
+# One cell: [gutter][sp][priority][sp][text][pad]
+# _td_tui_cell <col> <row> <width> -> REPLY
+_td_tui_cell() {
+  local c="$1" r="$2" cw="$3"
+  local rec="${_TD_UI_COL[$c,$r]}"
+  local -a f=("${(@ps:$TD_US:)rec}")
+  local pri="${f[2]}" text="${f[4]}"
+  # Marks are keyed by the full UUID (field 7), not the 4-char display id.
+  local handle="${f[7]:-${f[1]}}"
+
+  local is_cursor=0 is_marked=0
+  (( c == _TD_UI_CUR_COL && r == ${_TD_UI_CUR_ROW[$c]:-1} )) && is_cursor=1
+  [[ -n "${_TD_UI_MARKS[$handle]-}" ]] && is_marked=1
+
+  _td_tui_gutter "$is_cursor" "$is_marked"; local g="$REPLY"
+  _td_tui_prio "$pri"; local pg="$REPLY" ptok="$REPLY_TOKEN"
+
+  _td_layout_textw "$cw" 1
+  _td_fit "$text" "$REPLY"; local body="$REPLY"
+
+  # The done column reads as settled rather than active.
+  local ttok=text
+  (( c == ${#_TD_UI_STATUSES[@]} )) && ttok=text-muted
+
+  local gp bp
+  if (( is_cursor )); then
+    _td_paint accent "$g"; gp="$REPLY"
+  elif (( is_marked )); then
+    _td_paint accent-alt "$g"; gp="$REPLY"
+  else
+    gp="$g"
+  fi
+  _td_paint "$ptok" "$pg"; local pp="$REPLY"
+
+  if (( is_cursor )); then
+    # Tint the row rather than reversing it: a background composes with the
+    # foreground colours instead of flattening them, so the priority glyph and
+    # the done-column muting survive on the very row you are looking at.
+    _td_paint text "$body"; bp="${TD_T[bold]}${REPLY}"
+    REPLY="${TD_T[bg-selection-bg]}${gp} ${pp} ${bp}${TD_T[reset]}${TD_T[bg-selection-bg]} ${TD_T[reset]}"
+  else
+    _td_paint "$ttok" "$body"; bp="$REPLY"
+    REPLY="${gp} ${pp} ${bp} "
+  fi
+}
+
+# --- peek line: the selected task, in full ---
+_td_tui_row_peek() {
+  local c=$_TD_UI_CUR_COL
+  local r=${_TD_UI_CUR_ROW[$c]:-1}
+  local rec="${_TD_UI_COL[$c,$r]}"
+
+  if [[ -z "$rec" ]]; then
+    _td_paint text-faint " no task selected"
+    _td_tui_lr "$REPLY" ""
+    return
+  fi
+
+  local -a f=("${(@ps:$TD_US:)rec}")
+  local id="${f[1]}" pri="${f[2]}" tags="${f[3]}" ref="${f[5]}" age="${f[6]}"
+
+  local left right
+  _td_paint text-muted " ${id}"; left="$REPLY"
+  _td_tui_prio "$pri"
+  _td_paint "$REPLY_TOKEN" "  $REPLY"; left+="$REPLY"
+  _td_paint text-muted " ${pri}"; left+="$REPLY"
+  if [[ -n "$tags" ]]; then
+    _td_paint accent-alt "  ${tags}"; left+="$REPLY"
+  fi
+  if [[ -n "$ref" ]]; then
+    # Shortened for the line, but the full URL is what the hyperlink carries.
+    local short="${ref#*://}"
+    _td_trunc "$short" 30
+    _td_link "$ref" "${TD_GLYPH[ref]} $REPLY"
+    _td_paint info "$REPLY"; left+="  $REPLY"
+  fi
+
+  local st="${_TD_UI_STATUSES[$c]}"
+  _td_paint text-faint "${st}${age:+ · ${age} idle} "; right="$REPLY"
+  _td_tui_lr "$left" "$right"
+}
+
+# --- command line: prompt, message, or the key hints ---
+_td_tui_row_cmd() {
+  local left right
+
+  if [[ -n "${_TD_UI_PROMPT-}" ]]; then
+    _td_paint accent " ${_TD_UI_PROMPT}"; left="$REPLY"
+    _td_paint text "${_TD_UI_INPUT-}";    left+="$REPLY"
+    _td_paint accent "${TD_GLYPH[caret]}"; left+="$REPLY"
+    _td_paint text-faint "Enter accept   Esc cancel "; right="$REPLY"
+    _td_tui_lr "$left" "$right"
+    return
+  fi
+
+  if [[ -n "${_TD_UI_MSG-}" ]]; then
+    _td_paint accent " ${_TD_UI_MSG}"; left="$REPLY"
+  else
+    local -a hints=(
+      "j k h l:move" "spc:done" "a:add" "e:edit" "m:mark" "/:find"
+    )
+    left=" "
+    local hint k lab
+    for hint in "${hints[@]}"; do
+      k="${hint%%:*}"; lab="${hint#*:}"
+      _td_paint accent-alt "$k";     left+="$REPLY"
+      _td_paint text-muted " $lab  "; left+="$REPLY"
+    done
+  fi
+
+  local marks=${#_TD_UI_MARKS[@]}
+  right=""
+  if (( marks > 0 )); then
+    _td_paint accent-alt "${TD_GLYPH[done]}${marks} marked  "; right+="$REPLY"
+  fi
+  _td_paint danger "x";        right+="$REPLY"
+  _td_paint text-muted ":del  "; right+="$REPLY"
+  _td_paint accent-alt "?";    right+="$REPLY"
+  _td_paint text-muted ":keys  "; right+="$REPLY"
+  _td_paint accent-alt "q";    right+="$REPLY"
+  _td_paint text-muted ":quit "; right+="$REPLY"
+
+  _td_tui_lr "$left" "$right"
+}
+
+# --- compose the whole frame -> REPLY ---
+_td_tui_compose() {
+  local -a lines=()
+
+  (( TD_L_CONTEXT )) && { _td_tui_row_context; lines+=("$REPLY"); }
+  _td_tui_row_headers;                          lines+=("$REPLY")
+  _td_tui_rule "${TD_GLYPH[cross]}";            lines+=("$REPLY")
+
+  local sr
+  for (( sr = 1; sr <= TD_L_ROWS; sr++ )); do
+    _td_tui_row_tasks "$sr"
+    lines+=("$REPLY")
+  done
+
+  (( TD_L_CLOSE )) && { _td_tui_rule "${TD_GLYPH[tup]}"; lines+=("$REPLY"); }
+
+  local p
+  for (( p = 1; p <= TD_L_PEEK; p++ )); do
+    _td_tui_row_peek
+    lines+=("$REPLY")
+  done
+
+  _td_tui_row_cmd; lines+=("$REPLY")
+
+  # Every line is cursor-addressed so a short line cannot leave the previous
+  # frame's tail behind, which is what a plain newline join would do.
+  local out="" i
+  for (( i = 1; i <= ${#lines[@]}; i++ )); do
+    out+=$'\033['"${i};1H"$'\033[K'"${lines[$i]}"
+  done
+  REPLY="$out"
+  # Also hand back the lines themselves. The frame is one addressed blob, so
+  # recovering rows from it means re-parsing escapes; the test asserts geometry
+  # per line and should not have to.
+  reply=("${lines[@]}")
+}
