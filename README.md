@@ -3,15 +3,13 @@
 A kanban-style task manager that lives in your terminal. Pure zsh, zero dependencies.
 
 ```
-  main   19 todo · 3 doing · 4 done                       26 tasks · 2 lists
-  TODO                 19 │  DOING                 3 │  DONE                 4
+  dev   2 todo · 2 doing · 2 done                                       6 tasks
+  TODO                  2 │  DOING                 2 │  DONE                  2
 ──────────────────────────┼──────────────────────────┼──────────────────────────
- ▇ Fix auth token refresh │ ▇ Refactor storage layer │ ✓ Storage lock design
-   4c1a  api  6h  ↗       │   2a3f  api db  3h       │   aa71  core  1d
- ▄ Write migration notes  │ ▄ Theme engine plus 256… │ ✓ Width primitives
-   9b02  docs  4h         │   b8c7  ui  3h           │   c604  core  1d
- ▁ Sidebar list counts    │                          │
-   77a4  ui  2d           │                          │
+ ▄ Write migration notes  │ ▇ Fix auth token refresh │ ▁ Sidebar list counts
+   02f0  docs  1m         │   3554  api  1m  ↗       │   af44  ui  1m
+ ▇ Refactor storage layer │ ▄ Theme engine plus 256 …│ ▁ Width primitives
+   9d6f  api db  1m       │   d660  ui  1m           │   30c1  core  1m
 ──────────────────────────┴──────────────────────────┴──────────────────────────
 ```
 
@@ -22,7 +20,6 @@ Priority reads as a scale — `▇` high, `▄` medium, `▁` low — and falls 
 
 - **Kanban board** — columns per status, right in the terminal
 - **Interactive board** — TUI with keyboard navigation (`todo ui`)
-- **Checkbox mode** — simple `[ ]/[x]` view for todo/done lists
 - **Multiple lists** — one per project/context, switch with a single command
 - **Custom statuses** — each list defines its own workflow
 - **Priorities, tags and filters** — by status or priority
@@ -77,8 +74,11 @@ todo version
 
 ```bash
 todo ui                                       # open interactive board
-todo ui --checkbox                            # checkbox mode (simple lists)
 ```
+
+A list with only two statuses simply renders as a two-column board — there is no
+separate checkbox mode. (`--checkbox` is still accepted and ignored, so an old
+alias will not break.)
 
 **Keybindings:**
 
@@ -120,6 +120,25 @@ todo edit abc1 "Updated title"                # edit (ID prefix match)
 todo rm abc1                                  # remove
 ```
 
+Any unambiguous ID prefix works, so `todo edit 3554` is enough — you rarely type
+more than four characters. `todo ls` looks like this:
+
+```
+  ID        P  STATUS    TAGS            TITLE
+  ────────────────────────────────────────────────────────────────────────────
+  9D6FA446  ▇  todo      api db          Refactor storage layer
+  02F05E62  ▄  todo      docs            Write migration notes
+  3554DC61  ▇  doing     api             Fix auth token refresh ↗
+  D6602A3C  ▄  doing     ui              Theme engine plus 256 fallback
+  AF448DAB  ▁  done      ui              Sidebar list counts
+  30C1B57F  ▁  done      core            Width primitives
+  ────────────────────────────────────────────────────────────────────────────
+  6 tasks                                              ▇ high  ▄ medium  ▁ low
+```
+
+Rows group by status, then by priority. The `↗` marks a task that has a
+reference URL attached.
+
 ### Detail View & References
 
 ```bash
@@ -159,9 +178,21 @@ Archived tasks are stored separately — they don't appear in `ls`, `board`, or 
 
 ```bash
 todo summary                                  # bars per status, % complete
-todo summary --oneline                        # todo:19 doing:3 done:4
-todo summary --glyph                          # main ▇19 ▄3 ✓4
+todo summary --oneline                        # todo:2 doing:2 done:2
+todo summary --glyph                          # dev ▇2 ▄2 ✓2
 ```
+
+```
+  dev                                                   6 tasks · 33% complete
+  ────────────────────────────────────────────────────────────────────────────
+  todo   2  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  doing  2  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  done   2  ██████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  ────────────────────────────────────────────────────────────────────────────
+  other lists: default
+```
+
+The bars are all scaled to the list total, so their lengths compare directly.
 
 Add to `~/.zshrc` for startup info:
 
@@ -216,16 +247,13 @@ Data lives in `~/.todolist/` (override with `TODOLIST_DATA` env var):
 
 ```
 ~/.todolist/
-  config.json              # active list
+  config.json              # which list is active
   lists/
     default/
-      tasks.json           # task data
-      archive.json         # archived tasks
-      config.json          # list statuses
+      tasks.json           # tasks AND that list's statuses
+      archive.json         # created by the first `todo archive`
     work/
       tasks.json
-      archive.json
-      config.json
 ```
 
 JSON flat files. Human-readable. Back up by copying the directory.
