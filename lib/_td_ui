@@ -189,18 +189,21 @@ _td_theme() {
         border D8D6D0   border-focus 2F6FEB text 24262B           text-muted 6B7280
         text-faint 9AA0AA accent 2F6FEB     accent-alt 8250DF     success 1A7F37
         warning 9A6700  danger C1121F       info 0969DA
+        prio-low 8A9099
       )
       idx256=(
         surface 231 surface-alt 255 selection-bg 253 match-bg 229
         border 250 border-focus 026 text 235 text-muted 243
         text-faint 248 accent 026 accent-alt 092 success 028
         warning 136 danger 160 info 032
+        prio-low 245
       )
       idx16=(
         surface -1 surface-alt -1 selection-bg -1 match-bg -1
         border 8 border-focus 4 text 0 text-muted 8
         text-faint 8 accent 4 accent-alt 5 success 2
         warning 3 danger 1 info 6
+        prio-low 8
       )
       ;;
     (*)  # nocturne (dark, default)
@@ -209,18 +212,21 @@ _td_theme() {
         border 2E333D   border-focus 7AA2F7 text D7DAE0          text-muted 8A919E
         text-faint 5A616E accent 7AA2F7     accent-alt C4A7E7    success 9ECE6A
         warning E0AF68  danger F7768E       info 7DCFFF
+        prio-low 7C8494
       )
       idx256=(
         surface 235 surface-alt 236 selection-bg 239 match-bg 060
         border 240 border-focus 111 text 253 text-muted 245
         text-faint 242 accent 111 accent-alt 183 success 150
         warning 180 danger 211 info 117
+        prio-low 245
       )
       idx16=(
         surface -1 surface-alt -1 selection-bg -1 match-bg -1
         border 8 border-focus 12 text 15 text-muted 7
         text-faint 8 accent 12 accent-alt 13 success 10
         warning 11 danger 9 info 14
+        prio-low 8
       )
       ;;
   esac
@@ -244,6 +250,13 @@ _td_theme() {
 # Every glyph is exactly one display column; test_ui asserts that rather than
 # trusting it. The ASCII priority fallbacks are deliberately v0.2's glyphs so
 # existing muscle memory survives the upgrade.
+#
+# Priority uses Block Elements (7/8, 4/8, 1/8 ink) rather than triangles and a
+# circle. The triangles carried no magnitude ordering -- high and medium read
+# as equally heavy while low nearly vanished -- and an up-triangle for "high"
+# collides with the same glyph meaning "scroll up" elsewhere in a TUI. Blocks
+# are also the same family as the selection gutter, so the two never look like
+# they came from different designs.
 typeset -gA TD_GLYPH=()
 
 _td_glyphs() {
@@ -253,7 +266,7 @@ _td_glyphs() {
       tleft $'├' tright $'┤'
       tl $'╭'    tr $'╮'    bl $'╰'     br $'╯'
       cursor $'▌' cursor-off $'▏' marked $'┇' cursor-marked $'▚'
-      high $'▲'  medium $'●' low $'▾'
+      high $'▇'  medium $'▄' low $'▁'
       done $'✓'  ref $'↗'   active $'▸'  more $'⋯'
       ellipsis $'…' bar-full $'█' bar-empty $'░'
     )

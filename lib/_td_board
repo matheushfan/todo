@@ -57,7 +57,7 @@ _td_board_card() {
   local glyph token
   case "$pri" in
     (high)   glyph="${TD_GLYPH[high]}";   token=danger ;;
-    (low)    glyph="${TD_GLYPH[low]}";    token=success ;;
+    (low)    glyph="${TD_GLYPH[low]}";    token=prio-low ;;
     (*)      glyph="${TD_GLYPH[medium]}"; token=warning ;;
   esac
 

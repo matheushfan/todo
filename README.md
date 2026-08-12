@@ -6,16 +6,16 @@ A kanban-style task manager that lives in your terminal. Pure zsh, zero dependen
   main   19 todo · 3 doing · 4 done                       26 tasks · 2 lists
   TODO                 19 │  DOING                 3 │  DONE                 4
 ──────────────────────────┼──────────────────────────┼──────────────────────────
- ▲ Fix auth token refresh │ ▲ Refactor storage layer │ ✓ Storage lock design
+ ▇ Fix auth token refresh │ ▇ Refactor storage layer │ ✓ Storage lock design
    4c1a  api  6h  ↗       │   2a3f  api db  3h       │   aa71  core  1d
- ● Write migration notes  │ ● Theme engine plus 256… │ ✓ Width primitives
+ ▄ Write migration notes  │ ▄ Theme engine plus 256… │ ✓ Width primitives
    9b02  docs  4h         │   b8c7  ui  3h           │   c604  core  1d
- ▾ Sidebar list counts    │                          │
+ ▁ Sidebar list counts    │                          │
    77a4  ui  2d           │                          │
 ──────────────────────────┴──────────────────────────┴──────────────────────────
 ```
 
-Priority reads as a scale — `▲` high, `●` medium, `▾` low — and falls back to
+Priority reads as a scale — `▇` high, `▄` medium, `▁` low — and falls back to
 `!` `~` `.` where Unicode is not available.
 
 ## Features
@@ -151,7 +151,7 @@ Archived tasks are stored separately — they don't appear in `ls`, `board`, or 
 ```bash
 todo summary                                  # bars per status, % complete
 todo summary --oneline                        # todo:19 doing:3 done:4
-todo summary --glyph                          # main ▲19 ●3 ✓4
+todo summary --glyph                          # main ▇19 ▄3 ✓4
 ```
 
 Add to `~/.zshrc` for startup info:

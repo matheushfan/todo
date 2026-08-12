@@ -140,7 +140,7 @@ while IFS=$'\x1f' read -r id task_status priority tags title ref; do
 
   case "$priority" in
     (high)   glyph="${TD_GLYPH[high]}";   token=danger ;;
-    (low)    glyph="${TD_GLYPH[low]}";    token=success ;;
+    (low)    glyph="${TD_GLYPH[low]}";    token=prio-low ;;
     (*)      glyph="${TD_GLYPH[medium]}"; token=warning ;;
   esac
   [[ -n "$ref" ]] && title+=" ${TD_GLYPH[ref]}"
