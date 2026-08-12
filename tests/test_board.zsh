@@ -14,6 +14,8 @@ autoload -Uz _td_storage && _td_storage
 # Disable colors for predictable assertions
 TD_COLOR_ENABLED=0
 autoload -Uz _td_color && _td_color
+autoload -Uz _td_ui && _td_ui
+_td_ui_init always
 autoload -Uz _td_board && _td_board
 
 # --- Helper: create test data ---
@@ -56,15 +58,42 @@ assert_contains "task: Deploy app" "Deploy app" "$output"
 echo ""
 echo "=== Board: Column Separator ==="
 
-assert_contains "separator: | present" "|" "$output"
+assert_contains "separator present" "${TD_GLYPH[vbar]}" "$output"
 
 # --- Test 4: Priority indicators ---
 echo ""
 echo "=== Board: Priority Indicators ==="
 
-assert_contains "priority: ! for high" "!" "$output"
-assert_contains "priority: ~ for medium" "~" "$output"
-assert_contains "priority: . for low" "." "$output"
+assert_contains "priority glyph for high"   "${TD_GLYPH[high]}"   "$output"
+assert_contains "priority glyph for medium" "${TD_GLYPH[medium]}" "$output"
+assert_contains "priority glyph for low"    "${TD_GLYPH[low]}"    "$output"
+
+# --- Test 4b: every rendered line is exactly COLUMNS wide ---
+# This is what the glyph assertions were really protecting. Asserting the
+# geometry directly catches the whole class of misalignment -- wide characters,
+# ANSI padding, remainder columns -- rather than one glyph at a time.
+echo ""
+echo "=== Board: Geometry ==="
+
+geom_bad=""
+while IFS= read -r line; do
+  _td_width "$line"
+  (( REPLY == 80 )) || geom_bad+="${REPLY} "
+done < <(COLUMNS=80 LINES=24 _td_board_render "$tasks_file" 2>&1)
+assert_eq "every line is exactly 80 columns" "" "$geom_bad"
+
+# Wide characters must not push a row past the edge.
+tmpdir3=$(mktemp -d)
+TD_DATA="$tmpdir3"
+_td_storage_init
+wide_file="$(_td_storage_list_path)"
+TASK_TAGS="" _td_storage_add_task "$wide_file" "日本語のタスク 🚀 ação" "todo" "high" > /dev/null
+geom_bad=""
+while IFS= read -r line; do
+  _td_width "$line"
+  (( REPLY == 80 )) || geom_bad+="${REPLY} "
+done < <(COLUMNS=80 LINES=24 _td_board_render "$wide_file" 2>&1)
+assert_eq "CJK and emoji do not break alignment" "" "$geom_bad"
 
 # --- Test 5: Text truncation ---
 echo ""
@@ -77,7 +106,7 @@ tasks_file2="$(_td_storage_list_path)"
 TASK_TAGS="" _td_storage_add_task "$tasks_file2" "This is a very long task title that should definitely be truncated when displayed" "todo" "medium" > /dev/null
 
 trunc_output=$(COLUMNS=60 _td_board_render "$tasks_file2" 2>&1)
-assert_contains "truncation: ~ marker present" "~" "$trunc_output"
+assert_contains "truncation marker present" "${TD_GLYPH[ellipsis]}" "$trunc_output"
 
 # --- Test 6: Stacked fallback (COLUMNS=40, 3 statuses -> col_width < 20) ---
 echo ""
@@ -118,7 +147,7 @@ empty_col_output=$(COLUMNS=120 _td_board_render "$tasks_file3" 2>&1)
 assert_contains "empty col: TODO header" "TODO" "$empty_col_output"
 assert_contains "empty col: DOING header" "DOING" "$empty_col_output"
 assert_contains "empty col: DONE header" "DONE" "$empty_col_output"
-assert_contains "empty col: has separator" "|" "$empty_col_output"
+assert_contains "empty col: has separator" "${TD_GLYPH[vbar]}" "$empty_col_output"
 
 # --- Test 9: Board with no tasks ---
 echo ""

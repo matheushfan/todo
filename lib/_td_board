@@ -1,257 +1,305 @@
-# _td_board - kanban board rendering engine
+# _td_board - static kanban renderer
 # Autoloaded: file body = function body
+#
+# Layout at 80 columns, 3 statuses: 26 + 1 + 26 + 1 + 26 = 80, no remainder.
+# The board has no outer frame; dropping it is what frees the two columns that
+# make the arithmetic land exactly, and a frame around the whole terminal adds
+# nothing you cannot already see.
+#
+# Each task is a two-line card: the title gets a full line to itself, and the
+# metadata that you scan rather than read (id, tags, age, ref) sits dimmed
+# underneath. v0.2 crammed all of it onto one line, so the title -- the only
+# part you actually read -- was the first thing truncated.
 
-# Render kanban board (main entry point)
-# Usage: _td_board_render <tasks_file>
-_td_board_render() {
+# Fetch every field the board needs in ONE osascript call.
+# Fields are 0x1F separated (never TAB: TAB is IFS whitespace, so zsh read
+# collapses runs of it and empty fields silently shift the columns).
+_td_board_fetch() {
   local tasks_file="$1"
-
-  [[ -f "$tasks_file" ]] || { _td_error "File not found: $tasks_file"; return 1; }
-
-  # Terminal width detection
-  local term_width=${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}
-
-  # Get statuses from tasks.json via single JXA call
-  local statuses_lines
-  statuses_lines=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
-    function run() {
-      var env = $.NSProcessInfo.processInfo.environment;
-      var data = JSON.parse(env.objectForKey("JSON_DATA").js);
-      return data.statuses.join("\n");
+  JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
+    function age(iso) {
+      if (!iso) return "";
+      var s = Math.floor((new Date() - new Date(iso)) / 1000);
+      if (isNaN(s) || s < 0) return "";
+      if (s < 3600)   return Math.max(1, Math.floor(s / 60)) + "m";
+      if (s < 86400)  return Math.floor(s / 3600) + "h";
+      if (s < 604800) return Math.floor(s / 86400) + "d";
+      return Math.floor(s / 604800) + "w";
     }
-  ' 2>/dev/null) || { _td_error "Failed to read statuses"; return 1; }
-
-  local -a statuses=("${(@f)statuses_lines}")
-  local num_cols=${#statuses[@]}
-
-  if (( num_cols == 0 )); then
-    _td_error "No statuses defined"
-    return 1
-  fi
-
-  # Column width: subtract separators (num_cols + 1 for | edges and between)
-  local col_width=$(( (term_width - num_cols - 1) / num_cols ))
-
-  # Fallback to stacked when too narrow or not a TTY
-  if (( col_width < 20 )); then
-    _td_board_stacked "$tasks_file" "$statuses_lines"
-    return 0
-  fi
-
-  # Single JXA call to group ALL tasks by status
-  # Returns blocks separated by __COL_SEP__, tasks newline-separated, fields tab-separated
-  local grouped_output
-  grouped_output=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
     function run() {
-      var env = $.NSProcessInfo.processInfo.environment;
-      var data = JSON.parse(env.objectForKey("JSON_DATA").js);
-      var blocks = data.statuses.map(function(status) {
-        var tasks = data.tasks.filter(function(t) { return t.status === status; });
-        if (tasks.length === 0) return "";
-        var lines = tasks.map(function(t) {
-          var tagStr = t.tags && t.tags.length > 0 ? t.tags.join(",") : "";
-          var refInd = (t.ref && t.ref !== "") ? " \u2192" : "";
-          return t.id.substring(0, 8) + "\t" + t.priority + "\t" + tagStr + "\t" + t.text + refInd;
-        });
-        return lines.join("\n");
+      var data = JSON.parse(
+        $.NSProcessInfo.processInfo.environment.objectForKey("JSON_DATA").js
+      );
+      var U = "", R = "";
+      var out = [data.statuses.join(U)];
+      data.statuses.forEach(function (st) {
+        var rows = data.tasks.filter(function (t) { return t.status === st; })
+          .map(function (t) {
+            var tags = (t.tags && t.tags.length) ? t.tags.join(" ") : "";
+            var text = String(t.text || "").replace(/[\r\n\t]+/g, " ");
+            return [t.id.substring(0, 4).toLowerCase(), t.priority || "",
+                    tags, text, t.ref || "", age(t.updated || t.created)].join(U);
+          });
+        out.push(rows.join(R));
       });
-      return blocks.join("\n__COL_SEP__\n");
+      return out.join("");
     }
-  ' 2>/dev/null)
-
-  # Parse grouped output into per-column arrays
-  local -a col_data
-  local -a col_counts
-  local max_rows=0
-
-  # Split by __COL_SEP__
-  local col_idx=0
-  local IFS_BAK="$IFS"
-
-  # Build arrays for each column
-  local -A task_cells  # task_cells[col,row] = formatted string
-
-  local block
-  local -a blocks
-  # Split on __COL_SEP__
-  blocks=("${(@s:__COL_SEP__:)grouped_output}")
-
-  local raw_block row_idx line
-  local -a lines
-
-  for (( c=1; c<=num_cols; c++ )); do
-    raw_block="${blocks[$c]}"
-    # Trim leading/trailing newlines
-    raw_block="${raw_block#$'\n'}"
-    raw_block="${raw_block%$'\n'}"
-
-    if [[ -z "$raw_block" ]]; then
-      col_counts[$c]=0
-    else
-      lines=("${(@f)raw_block}")
-      col_counts[$c]=${#lines[@]}
-      (( ${#lines[@]} > max_rows )) && max_rows=${#lines[@]}
-
-      row_idx=1
-      for line in "${lines[@]}"; do
-        task_cells[$c,$row_idx]="$line"
-        row_idx=$((row_idx + 1))
-      done
-    fi
-  done
-
-  # --- Render header row ---
-  local header header_colored visible_hdr_len pad_left pad_right
-
-  printf "|"
-  for (( c=1; c<=num_cols; c++ )); do
-    header="${statuses[$c]:u}"  # uppercase
-    header_colored="${TD_COLORS[bold]}${TD_COLORS[cyan]}${header}${TD_COLORS[reset]}"
-    # Center the header in col_width
-    visible_hdr_len=${#header}
-    pad_left=$(( (col_width - visible_hdr_len) / 2 ))
-    pad_right=$(( col_width - visible_hdr_len - pad_left ))
-    printf "%*s%s%*s|" "$pad_left" "" "$header_colored" "$pad_right" ""
-  done
-  printf "\n"
-
-  # --- Render separator row ---
-  printf "+"
-  for (( c=1; c<=num_cols; c++ )); do
-    printf '%*s+' "$col_width" '' | tr ' ' '='
-  done
-  printf "\n"
-
-  # --- Render task rows ---
-  if (( max_rows == 0 )); then
-    # No tasks at all -- show empty board message
-    printf "|"
-    local msg="No tasks yet. Run 'todo add' to create one."
-    local total_inner=$(( col_width * num_cols + num_cols - 1 ))
-    local msg_pad_left=$(( (total_inner - ${#msg}) / 2 ))
-    local msg_pad_right=$(( total_inner - ${#msg} - msg_pad_left ))
-    printf "%*s%s%*s" "$msg_pad_left" "" "$msg" "$msg_pad_right" ""
-    printf "|\n"
-    return 0
-  fi
-
-  local cell_raw cell_id cell_pri cell_tags cell_text rest formatted
-
-  for (( row=1; row<=max_rows; row++ )); do
-    printf "|"
-    for (( c=1; c<=num_cols; c++ )); do
-      cell_raw="${task_cells[$c,$row]}"
-      if [[ -z "$cell_raw" ]]; then
-        # Empty cell -- pad with spaces
-        printf "%-${col_width}s|" ""
-      else
-        # Parse: id\tpriority\ttags\ttext
-        cell_id="${cell_raw%%	*}"
-        rest="${cell_raw#*	}"
-        cell_pri="${rest%%	*}"
-        rest="${rest#*	}"
-        cell_tags="${rest%%	*}"
-        cell_text="${rest#*	}"
-
-        formatted="$(_td_board_format_card "$cell_id" "$cell_pri" "$cell_tags" "$cell_text" "$col_width")"
-        _td_printf_colored "$formatted" "$col_width"
-        printf "|"
-      fi
-    done
-    printf "\n"
-  done
+  ' 2>/dev/null
 }
 
-# Format a single task card for a kanban cell
-# Usage: _td_board_format_card <id> <priority> <tags> <text> <width>
-_td_board_format_card() {
-  local id="$1" priority="$2" tags="$3" text="$4" width="$5"
+# Render one card line pair into the caller-supplied arrays.
+# Usage: _td_board_card <row-string> <cell-width> -> REPLY_L1, REPLY_L2
+_td_board_card() {
+  local row="$1" cw="$2"
+  local -a f=("${(@ps::)row}")
+  local id="${f[1]}" pri="${f[2]}" tags="${f[3]}" text="${f[4]}" ref="${f[5]}" age="${f[6]}"
 
-  # Priority indicator
-  local pri_char
-  case "$priority" in
-    high)   pri_char="${TD_PRIORITY_COLORS[high]}!${TD_COLORS[reset]}" ;;
-    medium) pri_char="${TD_PRIORITY_COLORS[medium]}~${TD_COLORS[reset]}" ;;
-    low)    pri_char="${TD_PRIORITY_COLORS[low]}.${TD_COLORS[reset]}" ;;
-    *)     pri_char=" " ;;
+  local glyph token
+  case "$pri" in
+    (high)   glyph="${TD_GLYPH[high]}";   token=danger ;;
+    (low)    glyph="${TD_GLYPH[low]}";    token=success ;;
+    (*)      glyph="${TD_GLYPH[medium]}"; token=warning ;;
   esac
 
-  # Short ID (8 chars), dim
-  local id_short="${id:0:8}"
-  local id_colored="${TD_COLORS[dim]}${id_short}${TD_COLORS[reset]}"
+  # Title line: space + glyph + space + title.
+  _td_fit "$text" $(( cw - 3 ))
+  local title="$REPLY"
+  _td_paint "$token" "$glyph"; local pg="$REPLY"
+  _td_paint text "$title";     local pt="$REPLY"
+  typeset -g REPLY_L1=" ${pg} ${pt}"
 
-  # Truncate text BEFORE colorizing
-  # Prefix visible: "! ABCD1234 " = 1 + 1 + 8 + 1 = 11 chars, plus 1 padding = 12
-  local prefix_visible_len=12
-  local max_text=$((width - prefix_visible_len - 1))
-  if (( max_text < 1 )); then
-    max_text=1
-  fi
-  if (( ${#text} > max_text )); then
-    text="${text:0:$((max_text - 1))}~"
-  fi
-
-  printf '%s %s %s' "$pri_char" "$id_colored" "$text"
+  # Meta line: id, then tags, then age, then a ref marker.
+  local meta="$id"
+  [[ -n "$tags" ]] && meta+="  ${tags}"
+  [[ -n "$age"  ]] && meta+="  ${age}"
+  [[ -n "$ref"  ]] && meta+="  ${TD_GLYPH[ref]}"
+  _td_fit "$meta" $(( cw - 3 ))
+  _td_paint text-faint "$REPLY"
+  typeset -g REPLY_L2="   ${REPLY}"
 }
 
-# Stacked fallback view (narrow terminal)
-# Usage: _td_board_stacked <tasks_file> [statuses_lines]
-_td_board_stacked() {
-  local tasks_file="$1"
-  local statuses_lines="$2"
+# Horizontal rule spanning the board, with the given junction glyph.
+# Usage: _td_board_rule <junction> <width-array-name>
+_td_board_rule() {
+  local junction="$1"
+  local -a widths=("${(@P)2}")
+  local out="" i
+  for (( i = 1; i <= ${#widths[@]}; i++ )); do
+    _td_repeat "${TD_GLYPH[hbar]}" "${widths[$i]}"
+    out+="$REPLY"
+    (( i < ${#widths[@]} )) && out+="$junction"
+  done
+  _td_paint border "$out"
+  print -r -- "$REPLY"
+}
 
-  # If statuses not passed, read them
-  if [[ -z "$statuses_lines" ]]; then
-    statuses_lines=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
-      function run() {
-        var env = $.NSProcessInfo.processInfo.environment;
-        var data = JSON.parse(env.objectForKey("JSON_DATA").js);
-        return data.statuses.join("\n");
-      }
-    ' 2>/dev/null)
+# Main entry point.  Usage: _td_board_render <tasks_file>
+_td_board_render() {
+  local tasks_file="$1"
+  [[ -f "$tasks_file" ]] || { _td_error "File not found: $tasks_file"; return 1; }
+
+  # Self-sufficient: the test suites autoload this library directly through
+  # fpath without going through bin/todo.
+  if (( ! ${+functions[_td_ui_init]} )); then
+    autoload -Uz _td_ui && _td_ui
+  fi
+  [[ -z "${TD_GLYPH[hbar]}" ]] && _td_ui_init
+
+  local term_width=${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}
+  (( term_width < 20 )) && term_width=80
+
+  local raw
+  raw="$(_td_board_fetch "$tasks_file")" || { _td_error "Failed to read tasks"; return 1; }
+  [[ -z "$raw" ]] && { _td_error "Failed to read tasks"; return 1; }
+
+  local -a groups=("${(@ps::)raw}")
+  local -a statuses=("${(@ps::)groups[1]}")
+  local num_cols=${#statuses[@]}
+  (( num_cols == 0 )) && { _td_error "No statuses defined"; return 1; }
+
+  # Column widths: distribute the remainder across the leftmost columns so the
+  # board always occupies the full terminal width instead of leaving a ragged
+  # edge (v0.2 discarded the remainder and drew 79 of 80 columns).
+  local usable=$(( term_width - (num_cols - 1) ))
+  local base=$(( usable / num_cols ))
+  local extra=$(( usable % num_cols ))
+  local -a widths=()
+  local i
+  for (( i = 1; i <= num_cols; i++ )); do
+    widths+=( $(( base + (i <= extra ? 1 : 0) )) )
+  done
+
+  if (( base < 20 )); then
+    _td_board_stacked "$tasks_file"
+    return 0
   fi
 
-  local -a statuses=("${(@f)statuses_lines}")
-
-  # Get grouped output (single JXA call)
-  local grouped_output
-  grouped_output=$(JSON_DATA="$(cat "$tasks_file")" osascript -l JavaScript -e '
-    function run() {
-      var env = $.NSProcessInfo.processInfo.environment;
-      var data = JSON.parse(env.objectForKey("JSON_DATA").js);
-      var blocks = data.statuses.map(function(status) {
-        var tasks = data.tasks.filter(function(t) { return t.status === status; });
-        if (tasks.length === 0) return "";
-        var lines = tasks.map(function(t) {
-          var pri = "";
-          if (t.priority === "high") pri = "!";
-          else if (t.priority === "medium") pri = "~";
-          else if (t.priority === "low") pri = ".";
-          var refInd = (t.ref && t.ref !== "") ? " \u2192" : "";
-          return pri + " " + t.id.substring(0, 8) + " " + t.text + refInd;
-        });
-        return lines.join("\n");
-      });
-      return blocks.join("\n__COL_SEP__\n");
-    }
-  ' 2>/dev/null)
-
-  local -a blocks
-  blocks=("${(@s:__COL_SEP__:)grouped_output}")
-
-  for (( c=1; c<=${#statuses[@]}; c++ )); do
-    local status_name="${statuses[$c]:u}"
-    printf "\n%s%s%s%s\n" "${TD_COLORS[bold]}" "${TD_COLORS[cyan]}" "$status_name" "${TD_COLORS[reset]}"
-    printf "%s\n" "---"
-
-    local raw_block="${blocks[$c]}"
-    raw_block="${raw_block#$'\n'}"
-    raw_block="${raw_block%$'\n'}"
-
-    if [[ -z "$raw_block" ]]; then
-      printf "%s(empty)%s\n" "${TD_COLORS[dim]}" "${TD_COLORS[reset]}"
+  # Per-column rows and counts.
+  local -a counts=()
+  local total=0
+  for (( i = 1; i <= num_cols; i++ )); do
+    block="${groups[$((i + 1))]}"
+    if [[ -z "$block" ]]; then
+      counts+=(0)
     else
-      printf '%s\n' "$raw_block"
+      local -a rows=("${(@ps::)block}")
+      counts+=(${#rows[@]})
+      (( total += ${#rows[@]} ))
     fi
+  done
+
+  # --- context line: list name, per-status counts, total ---
+  local list_name="${_TD_BOARD_LIST:-$(_td_storage_active_list)}"
+  local -a bits=()
+  for (( i = 1; i <= num_cols; i++ )); do bits+=("${counts[$i]} ${statuses[$i]}"); done
+  local left right
+  _td_paint accent "$list_name"; left="  $REPLY"
+  _td_paint text-faint "${(j: · :)bits}"; left+="   $REPLY"
+  _td_paint text-faint "${total} task$( (( total == 1 )) || print s ) "; right="$REPLY"
+  _td_width "$left"; local lw=$REPLY
+  _td_width "$right"; local rw=$REPLY
+  local gap=$(( term_width - lw - rw ))
+  (( gap < 1 )) && gap=1
+  print -r -- "${left}${(l:$gap:: :)}${right}"
+
+  # --- column headers ---
+  local hdr="" label
+  for (( i = 1; i <= num_cols; i++ )); do
+    local cw=${widths[$i]}
+    # 2 leading spaces + name + count + 1 trailing space must total cw exactly.
+    _td_fit "${statuses[$i]:u}" $(( cw - 3 - ${#counts[$i]} ))
+    _td_paint text "$REPLY"; label="  $REPLY"
+    _td_paint text-faint "${counts[$i]}"; label+="$REPLY "
+    hdr+="$label"
+    (( i < num_cols )) && { _td_paint border "${TD_GLYPH[vbar]}"; hdr+="$REPLY"; }
+  done
+  print -r -- "$hdr"
+
+  _td_board_rule "${TD_GLYPH[cross]}" widths
+
+  # --- cards ---
+  local max_rows=0
+  for (( i = 1; i <= num_cols; i++ )); do (( counts[i] > max_rows )) && max_rows=${counts[i]}; done
+
+  if (( max_rows == 0 )); then
+    local blank=""
+    for (( i = 1; i <= num_cols; i++ )); do
+      blank+="${(l:${widths[$i]}:: :)}"
+      (( i < num_cols )) && { _td_paint border "${TD_GLYPH[vbar]}"; blank+="$REPLY"; }
+    done
+    print -r -- "$blank"
+    _td_board_rule "${TD_GLYPH[tup]}" widths
+    _td_board_empty_hint
+    return 0
+  fi
+
+  # Cap the board so it cannot scroll the terminal away from the prompt.
+  local avail=${LINES:-24}
+  local budget=$(( (avail - 6) / 2 ))
+  (( budget < 3 )) && budget=3
+  (( max_rows > budget )) && max_rows=$budget
+
+  local r line1 line2
+  for (( r = 1; r <= max_rows; r++ )); do
+    line1=""; line2=""
+    for (( i = 1; i <= num_cols; i++ )); do
+      local cw=${widths[$i]}
+      local block="${groups[$((i + 1))]}"
+      local -a rows=()
+      [[ -n "$block" ]] && rows=("${(@ps::)block}")
+      if (( r <= ${#rows[@]} )); then
+        _td_board_card "${rows[$r]}" "$cw"
+        line1+="$REPLY_L1"; line2+="$REPLY_L2"
+      else
+        line1+="${(l:$cw:: :)}"; line2+="${(l:$cw:: :)}"
+      fi
+      if (( i < num_cols )); then
+        _td_paint border "${TD_GLYPH[vbar]}"
+        line1+="$REPLY"; line2+="$REPLY"
+      fi
+    done
+    print -r -- "$line1"
+    print -r -- "$line2"
+  done
+
+  # --- overflow, one hint per column that has more ---
+  local overflow="" any=0
+  for (( i = 1; i <= num_cols; i++ )); do
+    local cw=${widths[$i]}
+    local hidden=$(( counts[i] - max_rows ))
+    if (( hidden > 0 )); then
+      any=1
+      _td_fit "   ${TD_GLYPH[more]} ${hidden} more" "$cw"
+      _td_paint text-faint "$REPLY"; overflow+="$REPLY"
+    else
+      overflow+="${(l:$cw:: :)}"
+    fi
+    (( i < num_cols )) && { _td_paint border "${TD_GLYPH[vbar]}"; overflow+="$REPLY"; }
+  done
+  (( any )) && print -r -- "$overflow"
+
+  _td_board_rule "${TD_GLYPH[tup]}" widths
+}
+
+# Shown only on a genuinely empty list: the board shape is drawn first, then
+# copy-pasteable commands. A new user should see what the tool IS before being
+# told what to type.
+_td_board_empty_hint() {
+  local reset="${TD_T[reset]}"
+  print -r -- ""
+  _td_paint text "  Nothing here yet."; print -r -- "$REPLY"
+  print -r -- ""
+  local -a examples=(
+    'todo add "Ship v0.3"|add your first task'
+    'todo add -p high -t api "Fix refresh"|priority and tags'
+    'todo ui|interactive board  (? for keys)'
+    'todo list create work|a second list'
+  )
+  local e cmd desc
+  for e in "${examples[@]}"; do
+    cmd="${e%%|*}"; desc="${e#*|}"
+    _td_fit "    $cmd" 46; _td_paint accent "$REPLY"; local c="$REPLY"
+    _td_paint text-faint "$desc"
+    print -r -- "${c}${REPLY}"
+  done
+  print -r -- ""
+}
+
+# Narrow-terminal fallback: one section per status, stacked.
+# Usage: _td_board_stacked <tasks_file>
+_td_board_stacked() {
+  local tasks_file="$1"
+  # Always re-fetch rather than take the arrays by name: a local declared with
+  # the caller's array name would shadow it and ${(@P)} would dereference the
+  # empty local. One extra osascript call, only in the narrow-terminal path.
+  local raw; raw="$(_td_board_fetch "$tasks_file")"
+  local -a groups=("${(@ps::)raw}")
+  local -a statuses=("${(@ps::)groups[1]}")
+
+  local term_width=${COLUMNS:-80}
+  (( term_width < 20 )) && term_width=80
+
+  # Every local is declared up front: re-running `local` inside a loop makes
+  # zsh echo the assignment, which leaked task rows into the output.
+  local i block row
+  local -a rows
+  for (( i = 1; i <= ${#statuses[@]}; i++ )); do
+    print -r -- ""
+    _td_paint accent "${statuses[$i]:u}"
+    print -r -- "  $REPLY"
+
+    block="${groups[$((i + 1))]}"
+    if [[ -z "$block" ]]; then
+      _td_paint text-faint "  (empty)"
+      print -r -- "$REPLY"
+      continue
+    fi
+
+    rows=("${(@ps::)block}")
+    for row in "${rows[@]}"; do
+      _td_board_card "$row" $(( term_width - 2 ))
+      print -r -- " $REPLY_L1"
+      print -r -- " $REPLY_L2"
+    done
   done
 }

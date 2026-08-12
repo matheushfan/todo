@@ -24,6 +24,11 @@ main() {
   # Load storage engine (JSON data layer)
   autoload -Uz _td_storage && _td_storage
 
+  # Load rendering primitives (measurement, theme, glyphs) then the legacy
+  # color map, which now derives from them
+  autoload -Uz _td_ui && _td_ui
+  _td_ui_init
+
   # Load color rendering library
   autoload -Uz _td_color && _td_color
 

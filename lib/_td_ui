@@ -1,0 +1,292 @@
+# _td_ui - rendering primitives shared by every view
+# Autoloaded: file body = function body
+#
+# One measurement/theme/glyph core for both the static renderers and the
+# interactive board. v0.2 duplicated truncation and padding logic between
+# _td_board and _td_interactive with constants that had already drifted apart
+# (prefix width 11 in one, 12 in the other), which is why the two never quite
+# looked like the same program.
+#
+# Hot-path functions return through REPLY rather than stdout. Returning via
+# $(...) forks a subshell per call: measured 2.03ms per cell, so a 500-cell
+# board spent a full second on text fitting alone. Through REPLY the same call
+# costs 0.043ms.
+
+zmodload zsh/terminfo 2>/dev/null
+
+typeset -g TD_ESC=$'\033'
+
+# ---------------------------------------------------------------- capabilities
+# TD_DEPTH: 24 = truecolor, 8 = 256-color, 4 = 16-color, 0 = no color
+typeset -g TD_DEPTH=0
+typeset -g TD_UNICODE=0
+
+# _td_ui_detect [never|always|auto]
+_td_ui_detect() {
+  local want="${1:-auto}"
+
+  # Precedence, highest first. NO_COLOR is a preference; TERM=dumb is a
+  # statement of capability, so they are not the same axis and dumb outranks
+  # even --color=always: escapes there are garbage, not color.
+  if [[ "$want" == never ]]; then TD_DEPTH=0
+  elif [[ -n "${NO_COLOR-}" ]]; then TD_DEPTH=0
+  elif [[ -n "${TD_COLOR_DEPTH-}" ]]; then TD_DEPTH=${TD_COLOR_DEPTH}
+  elif [[ "${TERM:-dumb}" == (dumb|) ]]; then TD_DEPTH=0
+  elif [[ "$want" != always ]] && [[ -z "${CLICOLOR_FORCE-}" || "${CLICOLOR_FORCE}" == 0 ]] && [[ ! -t 1 ]]; then
+    TD_DEPTH=0
+  else
+    # Terminals known NOT to do truecolor are checked before COLORTERM:
+    # Apple's Terminal.app is 256-color only, and emitting 38;2;r;g;b there
+    # yields wrong colors rather than a graceful fallback.
+    case "${TERM_PROGRAM-}" in
+      (Apple_Terminal) TD_DEPTH=8 ;;
+      (iTerm.app|WezTerm|ghostty|Hyper|vscode) TD_DEPTH=24 ;;
+      (*)
+        case "${COLORTERM-}" in
+          (truecolor|24bit) TD_DEPTH=24 ;;
+          (*)
+            case "${TERM-}" in
+              (*-direct*)  TD_DEPTH=24 ;;
+              (*256color*) TD_DEPTH=8 ;;
+              (*color*)    TD_DEPTH=4 ;;
+              (*)          TD_DEPTH=4 ;;
+            esac ;;
+        esac ;;
+    esac
+  fi
+
+  # Drawing glyphs the terminal cannot render produces tofu, which reads worse
+  # than honest ASCII.
+  if [[ -n "${TD_ASCII-}" ]]; then
+    TD_UNICODE=0
+  elif [[ "${LC_ALL}${LC_CTYPE}${LANG}" == *(UTF-8|utf8|UTF8)* ]]; then
+    TD_UNICODE=1
+  else
+    TD_UNICODE=0
+  fi
+}
+
+# ---------------------------------------------------------------- measurement
+# Strip ANSI -> REPLY. Handles CSI with any final byte and OSC (including the
+# OSC-8 hyperlinks used for task refs), not just the SGR "m" sequences.
+_td_strip() {
+  local s="$1"
+  # Fast path first: most strings hold no escapes at all, and this check runs
+  # before the option change so the common case pays nothing for it.
+  if [[ "$s" != *${TD_ESC}* ]]; then REPLY="$s"; return; fi
+  # The [^x]# and [0-9]# quantifiers below are EXTENDED_GLOB syntax.
+  setopt LOCAL_OPTIONS EXTENDED_GLOB
+  s="${s//${TD_ESC}\][^$'\007'${TD_ESC}]#$'\007'/}"
+  s="${s//${TD_ESC}\][^${TD_ESC}]#${TD_ESC}\\/}"
+  s="${s//${TD_ESC}\[[0-9;:?]#[a-zA-Z]/}"
+  s="${s//${TD_ESC}[()][A-Za-z0-9]/}"
+  REPLY="$s"
+}
+
+# Display width -> REPLY. ${(m)#s} is zsh's native display-width count:
+# CJK counts 2, combining marks 0, emoji 2. No wcwidth table needed.
+_td_width() {
+  _td_strip "$1"
+  REPLY=${(m)#REPLY}
+}
+
+# Truncate to N display columns -> REPLY.
+_td_trunc() {
+  local s="$1" max="$2" ell="${3-}"
+  [[ -z "$ell" ]] && ell="${TD_GLYPH[ellipsis]:-...}"
+  if (( max <= 0 )); then REPLY=""; return; fi
+
+  local plain
+  _td_strip "$s"; plain="$REPLY"
+  local n=${#plain} w=${(m)#plain}
+  if (( w <= max )); then REPLY="$s"; return; fi
+
+  local ellw=${(m)#ell}
+  local budget=$(( max - ellw ))
+  (( budget < 0 )) && budget=0
+
+  # Fast path: all single-width, so a plain substring is already correct.
+  if (( n == w )); then REPLY="${plain[1,budget]}${ell}"; return; fi
+
+  local out="" acc=0 cw i ch
+  for (( i = 1; i <= n; i++ )); do
+    ch="${plain[i]}"
+    cw=${(m)#ch}
+    (( acc + cw > budget )) && break
+    out+="$ch"; (( acc += cw ))
+  done
+  REPLY="${out}${ell}"
+}
+
+# Pad to N display columns -> REPLY. align: l (default) | r | c
+_td_pad() {
+  local s="$1" width="$2" align="${3:-l}"
+  _td_width "$s"
+  local fill=$(( width - REPLY ))
+  if (( fill <= 0 )); then REPLY="$s"; return; fi
+  case "$align" in
+    (r) REPLY="${(l:$fill:: :)}$s" ;;
+    (c) local lft=$(( fill / 2 ))
+        REPLY="${(l:$lft:: :)}$s${(l:$(( fill - lft )):: :)}" ;;
+    (*) REPLY="$s${(l:$fill:: :)}" ;;
+  esac
+}
+
+# Truncate then pad, so the cell occupies exactly `width` columns -> REPLY.
+_td_fit() {
+  local s="$1" width="$2" align="${3:-l}"
+  _td_trunc "$s" "$width"
+  _td_pad "$REPLY" "$width" "$align"
+}
+
+# Repeat a glyph to fill N display columns -> REPLY.
+# Built by padding with spaces and substituting, because the fill string in
+# ${(l:n::fill:)} is not parameter-expanded -- passing $g there emits a literal
+# "$g" rather than the glyph.
+_td_repeat() {
+  local g="$1" n="$2"
+  if (( n <= 0 )); then REPLY=""; return; fi
+  local spaces="${(l:$n:: :)}"
+  REPLY="${spaces// /$g}"
+}
+
+# ---------------------------------------------------------------------- color
+typeset -gA _TD_CC=()
+
+# _td_sgr <fg|bg> <rrggbb> <256idx> <16idx> -> REPLY
+# A 16-index of -1 means "terminal default", so a theme can decline to paint a
+# background at all rather than fight the user's own colour scheme.
+_td_sgr() {
+  local k="$1:$2:$3:$4:$TD_DEPTH"
+  if [[ -n "${_TD_CC[$k]-}" ]]; then REPLY="${_TD_CC[$k]}"; return; fi
+  local base basic out=''
+  if [[ "$1" == fg ]]; then base=38; basic=30; else base=48; basic=40; fi
+  case $TD_DEPTH in
+    (24) out="${TD_ESC}[${base};2;$(( 16#${2[1,2]} ));$(( 16#${2[3,4]} ));$(( 16#${2[5,6]} ))m" ;;
+    (8)  out="${TD_ESC}[${base};5;${3}m" ;;
+    (4)  if (( $4 < 0 )); then out=''
+         elif (( $4 >= 8 )); then out="${TD_ESC}[$(( basic + $4 - 8 ));1m"
+         else out="${TD_ESC}[$(( basic + $4 ))m"; fi ;;
+    (0)  out='' ;;
+  esac
+  _TD_CC[$k]="$out"; REPLY="$out"
+}
+
+# ---------------------------------------------------------------------- theme
+# Sixteen semantic tokens. Values are explicit at every depth rather than
+# quantized from the hex: the 6x6x6 cube collapses the three distinct dark
+# surfaces onto one index, which would flatten all the chrome into one shade.
+typeset -gA TD_T=()
+
+_td_theme() {
+  local name="${1:-${TD_THEME:-nocturne}}"
+  local -A hex idx256 idx16
+
+  case "$name" in
+    (paper)
+      hex=(
+        surface FBFBFA  surface-alt F0EFEC  selection-bg E3E6EF  match-bg FFF3C4
+        border D8D6D0   border-focus 2F6FEB text 24262B           text-muted 6B7280
+        text-faint 9AA0AA accent 2F6FEB     accent-alt 8250DF     success 1A7F37
+        warning 9A6700  danger C1121F       info 0969DA
+      )
+      idx256=(
+        surface 231 surface-alt 255 selection-bg 253 match-bg 229
+        border 250 border-focus 026 text 235 text-muted 243
+        text-faint 248 accent 026 accent-alt 092 success 028
+        warning 136 danger 160 info 032
+      )
+      idx16=(
+        surface -1 surface-alt -1 selection-bg -1 match-bg -1
+        border 8 border-focus 4 text 0 text-muted 8
+        text-faint 8 accent 4 accent-alt 5 success 2
+        warning 3 danger 1 info 6
+      )
+      ;;
+    (*)  # nocturne (dark, default)
+      hex=(
+        surface 16181D  surface-alt 1D2027  selection-bg 2A2F3A  match-bg 3D4757
+        border 2E333D   border-focus 7AA2F7 text D7DAE0          text-muted 8A919E
+        text-faint 5A616E accent 7AA2F7     accent-alt C4A7E7    success 9ECE6A
+        warning E0AF68  danger F7768E       info 7DCFFF
+      )
+      idx256=(
+        surface 235 surface-alt 236 selection-bg 239 match-bg 060
+        border 240 border-focus 111 text 253 text-muted 245
+        text-faint 242 accent 111 accent-alt 183 success 150
+        warning 180 danger 211 info 117
+      )
+      idx16=(
+        surface -1 surface-alt -1 selection-bg -1 match-bg -1
+        border 8 border-focus 12 text 15 text-muted 7
+        text-faint 8 accent 12 accent-alt 13 success 10
+        warning 11 danger 9 info 14
+      )
+      ;;
+  esac
+
+  TD_T=()
+  local k
+  for k in ${(k)hex}; do
+    _td_sgr fg "${hex[$k]}" "${idx256[$k]}" "${idx16[$k]}"; TD_T[fg-$k]="$REPLY"
+    _td_sgr bg "${hex[$k]}" "${idx256[$k]}" "${idx16[$k]}"; TD_T[bg-$k]="$REPLY"
+  done
+
+  if (( TD_DEPTH )); then
+    TD_T[reset]="${TD_ESC}[0m"; TD_T[bold]="${TD_ESC}[1m"
+    TD_T[dim]="${TD_ESC}[2m";   TD_T[rev]="${TD_ESC}[7m"
+  else
+    TD_T[reset]=''; TD_T[bold]=''; TD_T[dim]=''; TD_T[rev]=''
+  fi
+}
+
+# --------------------------------------------------------------------- glyphs
+# Every glyph is exactly one display column; test_ui asserts that rather than
+# trusting it. The ASCII priority fallbacks are deliberately v0.2's glyphs so
+# existing muscle memory survives the upgrade.
+typeset -gA TD_GLYPH=()
+
+_td_glyphs() {
+  if (( TD_UNICODE )); then
+    TD_GLYPH=(
+      hbar $'─'  vbar $'│'  cross $'┼'  tdown $'┬'  tup $'┴'
+      tleft $'├' tright $'┤'
+      tl $'╭'    tr $'╮'    bl $'╰'     br $'╯'
+      cursor $'▌' cursor-off $'▏' marked $'┇' cursor-marked $'▚'
+      high $'▲'  medium $'●' low $'▾'
+      done $'✓'  ref $'↗'   active $'▸'  more $'⋯'
+      ellipsis $'…' bar-full $'█' bar-empty $'░'
+    )
+  else
+    TD_GLYPH=(
+      hbar '-'  vbar '|'  cross '+'  tdown '+'  tup '+'
+      tleft '+' tright '+'
+      tl '+'    tr '+'    bl '+'     br '+'
+      cursor '>' cursor-off ':' marked '*' cursor-marked '#'
+      high '!'  medium '~' low '.'
+      done 'x'  ref '@'   active '>'  more '...'
+      ellipsis '~' bar-full '#' bar-empty '.'
+    )
+  fi
+}
+
+# Paint: _td_paint <token> <text> -> REPLY  (no-ops cleanly when TD_DEPTH=0)
+_td_paint() {
+  if (( TD_DEPTH == 0 )); then REPLY="$2"; return; fi
+  REPLY="${TD_T[fg-$1]}$2${TD_T[reset]}"
+}
+
+# OSC-8 hyperlink, so a task ref is clickable where the terminal supports it
+# and is plain text everywhere else. The label is what gets measured.
+_td_link() {
+  local url="$1" label="$2"
+  if (( TD_DEPTH == 0 )) || [[ -z "$url" ]]; then REPLY="$label"; return; fi
+  REPLY="${TD_ESC}]8;;${url}${TD_ESC}\\${label}${TD_ESC}]8;;${TD_ESC}\\"
+}
+
+# ----------------------------------------------------------------- bootstrap
+_td_ui_init() {
+  _td_ui_detect "${1:-auto}"
+  _td_theme
+  _td_glyphs
+}
