@@ -120,8 +120,9 @@ todo edit abc1 "Updated title"                # edit (ID prefix match)
 todo rm abc1                                  # remove
 ```
 
-Any unambiguous ID prefix works, so `todo edit 3554` is enough — you rarely type
-more than four characters. `todo ls` looks like this:
+Any unambiguous ID prefix works, so `todo edit 3554` is usually enough. If a
+prefix matches more than one task the command refuses and tells you, rather
+than guessing. `todo ls` looks like this:
 
 ```
   ID        P  STATUS    TAGS            TITLE
@@ -275,8 +276,11 @@ pinned to 256 because it advertises truecolor it cannot actually render.
 
 ## Requirements
 
-- **macOS** with zsh 5.9+ (default since Catalina)
-- That's it.
+- **macOS**, and zsh — the default shell since Catalina.
+- Developed and tested on zsh 5.9. Older releases are untested rather than
+  known-broken; the newest thing it leans on is `${(m)#s}` for display width,
+  which has been around since zsh 5.3.
+- That's it. Nothing to install beyond the repo itself.
 
 ## How it works
 
